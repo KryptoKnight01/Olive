@@ -1,4 +1,4 @@
-name: Phase 0 acceptance
+name: Olive acceptance
 
 on:
   push:
@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build and start the Phase 0 stack
+      - name: Build and start the Olive stack
         run: docker compose up --build --detach --wait
       - name: Apply migrations
         run: |

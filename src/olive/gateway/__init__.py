@@ -1,0 +1,1 @@
+"""Secure external signal gateway."""

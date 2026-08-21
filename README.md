@@ -44,6 +44,17 @@ See `docs/phase-0.md` for scope, acceptance criteria, and the Phase 1 boundary.
 
 See `docs/phase-1.md` for the complete Phase 1 contract.
 
+## Phase 2 capabilities
+
+- HMAC-SHA256 authentication over the exact raw webhook body
+- Timestamp freshness, single-use nonce replay protection, and Redis-backed rate limiting
+- Strict versioned TradingView signal schema with timezone-aware timestamps and Decimal prices
+- Canonical strategy-version and venue-instrument resolution
+- Immutable duplicate signal protection and an intake ledger for received/rejected payloads
+- Versioned `POST /api/v1/signals/tradingview` endpoint
+
+See `docs/phase-2.md` for the complete Phase 2 security and acceptance contract.
+
 ## Acceptance automation
 
-The `Phase 0 acceptance` workflow runs unit/static checks, validates the Alembic chain, builds the complete Compose stack, applies migrations, and probes both health contracts. Phase 1 must not begin until this workflow passes in a Docker-capable runner.
+The `Olive acceptance` workflow runs unit/static checks, validates the Alembic chain, builds the complete Compose stack, applies migrations, checks schema drift, and probes both health contracts. The next phase must not begin until this workflow passes in a Docker-capable runner.

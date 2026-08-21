@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from olive.config import get_settings
 from olive.db import Base
 from olive.domain import models  # noqa: F401
+from olive.gateway import models as gateway_models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:
@@ -27,6 +28,9 @@ ENUM_CHECK_NAMES = {
     "portfolio_status",
     "strategy_status",
     "strategy_version_state",
+    "signal_direction",
+    "signal_environment",
+    "signal_intake_status",
     "underlying_asset_class",
     "underlying_status",
     "venue_instrument_status",

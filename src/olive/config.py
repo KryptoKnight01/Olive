@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import StrEnum
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,6 +30,19 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://olive:olive@localhost:5432/olive"
     redis_url: str = "redis://localhost:6379/0"
     dependency_timeout_seconds: float = Field(default=2.0, gt=0, le=30)
+    signal_hmac_key_id: str = Field(default="tradingview-development", min_length=1)
+    signal_hmac_secret: SecretStr | None = None
+    signal_max_age_seconds: int = Field(default=300, gt=0, le=3600)
+    signal_nonce_ttl_seconds: int = Field(default=900, gt=0, le=86400)
+    signal_rate_limit: int = Field(default=60, gt=0, le=10000)
+    signal_rate_window_seconds: int = Field(default=60, gt=0, le=3600)
+    signal_max_payload_bytes: int = Field(default=65536, ge=1024, le=1048576)
+
+    @model_validator(mode="after")
+    def validate_gateway_windows(self) -> Settings:
+        if self.signal_nonce_ttl_seconds < self.signal_max_age_seconds:
+            raise ValueError("signal nonce TTL must cover the full accepted signal age")
+        return self
 
     @property
     def is_production(self) -> bool:
