@@ -1,0 +1,55 @@
+services:
+  api:
+    build:
+      context: .
+    environment:
+      OLIVE_APP_ENV: development
+      OLIVE_DATABASE_URL: postgresql+asyncpg://olive:olive@postgres:5432/olive
+      OLIVE_REDIS_URL: redis://redis:6379/0
+      OLIVE_LOG_LEVEL: INFO
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: olive
+      POSTGRES_USER: olive
+      POSTGRES_PASSWORD: olive
+    ports:
+      - "5432:5432"
+    volumes:
+      - olive-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U olive -d olive"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - olive-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  olive-postgres:
+  olive-redis:
+
