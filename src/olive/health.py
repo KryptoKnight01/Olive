@@ -45,4 +45,3 @@ class InfrastructureHealthChecker:
     async def check(self) -> dict[str, DependencyStatus]:
         postgres, redis = await asyncio.gather(self._check_postgres(), self._check_redis())
         return {"postgres": postgres, "redis": redis}
-

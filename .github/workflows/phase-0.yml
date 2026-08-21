@@ -34,7 +34,9 @@ jobs:
       - name: Build and start the Phase 0 stack
         run: docker compose up --build --detach --wait
       - name: Apply migrations
-        run: docker compose run --rm api alembic upgrade head
+        run: |
+          docker compose run --rm api alembic upgrade head
+          docker compose run --rm api alembic check
       - name: Verify health contracts
         run: |
           curl --fail --show-error http://localhost:8000/health/live
@@ -45,4 +47,3 @@ jobs:
       - name: Stop the stack
         if: always()
         run: docker compose down --volumes
-

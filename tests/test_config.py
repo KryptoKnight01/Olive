@@ -24,4 +24,3 @@ def test_unknown_environment_is_rejected() -> None:
 def test_dependency_timeout_must_be_positive() -> None:
     with pytest.raises(ValidationError):
         Settings(dependency_timeout_seconds=0)
-

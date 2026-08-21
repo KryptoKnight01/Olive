@@ -28,7 +28,7 @@ async def test_readiness_is_ready_when_all_dependencies_are_up(client: AsyncClie
     try:
         response = await client.get("/health/ready")
     finally:
-        app.dependency_overrides.clear()
+        app.dependency_overrides.pop(get_health_checker, None)
 
     assert response.status_code == 200
     assert response.json() == {
@@ -50,7 +50,7 @@ async def test_readiness_fails_closed_when_dependency_is_down(client: AsyncClien
     try:
         response = await client.get("/health/ready")
     finally:
-        app.dependency_overrides.clear()
+        app.dependency_overrides.pop(get_health_checker, None)
 
     assert response.status_code == 503
     assert response.json()["status"] == "not_ready"
@@ -58,4 +58,3 @@ async def test_readiness_fails_closed_when_dependency_is_down(client: AsyncClien
         "status": "down",
         "detail": "TimeoutError",
     }
-

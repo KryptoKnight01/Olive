@@ -23,4 +23,3 @@ def test_json_formatter_emits_machine_readable_context() -> None:
     assert payload["level"] == "INFO"
     assert payload["message"] == "health_checked"
     assert payload["context"]["environment"] == "testing"
-

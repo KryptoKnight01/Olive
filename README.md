@@ -1,6 +1,6 @@
 # Olive Trading Platform
 
-Phase 0 establishes the architecture foundation for a risk-first trading platform. It contains no signal, risk-decision, order, execution, or trading behavior.
+Olive is a risk-first trading platform built in acceptance-gated phases. The current Phase 1 implementation contains architecture and canonical asset-master behavior, but no signal, risk-decision, order, execution, or trading behavior.
 
 ## Phase 0 capabilities
 
@@ -33,6 +33,16 @@ pytest
 ```
 
 See `docs/phase-0.md` for scope, acceptance criteria, and the Phase 1 boundary.
+
+## Phase 1 capabilities
+
+- Canonical assets, underlyings, instruments, venues, and venue-symbol mappings
+- Account, portfolio, strategy, and immutable strategy-version schema foundations
+- Fixed-precision instrument metadata for tick size, lot size, multiplier, and leverage
+- Versioned asset-master API and deterministic venue-symbol resolution
+- Migration-backed constraints and fail-safe validation
+
+See `docs/phase-1.md` for the complete Phase 1 contract.
 
 ## Acceptance automation
 

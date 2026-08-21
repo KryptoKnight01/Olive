@@ -5,11 +5,13 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
 from olive.api.health import router as health_router
 from olive.cache import create_redis_client
 from olive.config import get_settings
-from olive.db import create_database_engine
+from olive.db import create_database_engine, create_session_factory
+from olive.domain.errors import DomainConflict, DomainNotFound, DomainValidationError
 from olive.health import InfrastructureHealthChecker
 from olive.logging import configure_logging
 
@@ -22,6 +24,7 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         engine = create_database_engine(settings.database_url)
+        app.state.session_factory = create_session_factory(engine)
         redis = create_redis_client(settings.redis_url)
         app.state.health_checker = InfrastructureHealthChecker(
             engine=engine,
@@ -42,8 +45,23 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     application.include_router(health_router)
+    from olive.api.asset_master import router as asset_master_router
+
+    application.include_router(asset_master_router)
+
+    @application.exception_handler(DomainNotFound)
+    async def handle_not_found(_request: object, exc: DomainNotFound) -> JSONResponse:
+        return JSONResponse(status_code=404, content={"code": exc.code, "detail": str(exc)})
+
+    @application.exception_handler(DomainConflict)
+    async def handle_conflict(_request: object, exc: DomainConflict) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"code": exc.code, "detail": str(exc)})
+
+    @application.exception_handler(DomainValidationError)
+    async def handle_validation(_request: object, exc: DomainValidationError) -> JSONResponse:
+        return JSONResponse(status_code=422, content={"code": exc.code, "detail": str(exc)})
+
     return application
 
 
 app = create_app()
-

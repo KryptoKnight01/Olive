@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from olive.config import get_settings
 from olive.db import Base
+from olive.domain import models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:
@@ -51,4 +52,3 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     asyncio.run(run_async_migrations())
-
