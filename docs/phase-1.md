@@ -95,4 +95,3 @@ Phase 0 liveness, readiness, configuration, logging, migration, and container be
 ## 19. Next phase only
 
 Phase 2 introduces the secure TradingView signal gateway. It is not implemented in Phase 1.
-

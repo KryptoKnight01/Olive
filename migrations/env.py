@@ -17,6 +17,38 @@ if config.config_file_name is not None:
 
 config.set_main_option("sqlalchemy.url", get_settings().database_url)
 target_metadata = Base.metadata
+ENUM_CHECK_NAMES = {
+    "account_environment",
+    "account_status",
+    "asset_class",
+    "asset_status",
+    "instrument_status",
+    "instrument_type",
+    "portfolio_status",
+    "strategy_status",
+    "strategy_version_state",
+    "underlying_asset_class",
+    "underlying_status",
+    "venue_instrument_status",
+    "venue_status",
+}
+
+
+def include_object(
+    object_: object,
+    name: str | None,
+    type_: str,
+    _reflected: bool,
+    compare_to: object | None,
+) -> bool:
+    """Ignore dialect-sensitive type-bound enum checks during schema comparison."""
+    if type_ == "check_constraint" and (
+        name in ENUM_CHECK_NAMES
+        or getattr(object_, "_type_bound", False)
+        or getattr(compare_to, "_type_bound", False)
+    ):
+        return False
+    return True
 
 
 def run_migrations_offline() -> None:
@@ -26,13 +58,19 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        include_object=include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def do_run_migrations(connection: object) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        include_object=include_object,
+    )
     with context.begin_transaction():
         context.run_migrations()
 

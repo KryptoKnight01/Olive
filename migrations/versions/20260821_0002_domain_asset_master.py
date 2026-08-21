@@ -30,6 +30,15 @@ asset_class = sa.Enum(
 record_status = ("ACTIVE", "SUSPENDED", "RETIRED")
 
 
+def status_enum(name: str) -> sa.Enum:
+    return sa.Enum(
+        *record_status,
+        name=name,
+        native_enum=False,
+        create_constraint=True,
+    )
+
+
 def identity_columns() -> list[sa.Column]:
     return [
         sa.Column("id", sa.Uuid(), nullable=False),
@@ -52,7 +61,7 @@ def upgrade() -> None:
         sa.Column("currency_code", sa.String(3)),
         sa.Column(
             "status",
-            sa.Enum(*record_status, name="asset_status", native_enum=False),
+            status_enum("asset_status"),
             nullable=False,
         ),
         sa.PrimaryKeyConstraint("id"),
@@ -67,7 +76,7 @@ def upgrade() -> None:
         sa.Column("timezone", sa.String(64), nullable=False),
         sa.Column(
             "status",
-            sa.Enum(*record_status, name="venue_status", native_enum=False),
+            status_enum("venue_status"),
             nullable=False,
         ),
         sa.PrimaryKeyConstraint("id"),
@@ -81,7 +90,7 @@ def upgrade() -> None:
         sa.Column("base_currency", sa.String(3), nullable=False),
         sa.Column(
             "status",
-            sa.Enum(*record_status, name="portfolio_status", native_enum=False),
+            status_enum("portfolio_status"),
             nullable=False,
         ),
         sa.PrimaryKeyConstraint("id"),
@@ -95,7 +104,7 @@ def upgrade() -> None:
         sa.Column("description", sa.String(1000)),
         sa.Column(
             "status",
-            sa.Enum(*record_status, name="strategy_status", native_enum=False),
+            status_enum("strategy_status"),
             nullable=False,
         ),
         sa.PrimaryKeyConstraint("id"),
@@ -120,6 +129,7 @@ def upgrade() -> None:
                 "CASH",
                 name="underlying_asset_class",
                 native_enum=False,
+                create_constraint=True,
             ),
             nullable=False,
         ),
@@ -129,7 +139,7 @@ def upgrade() -> None:
         sa.Column("themes", sa.JSON(), nullable=False),
         sa.Column(
             "status",
-            sa.Enum(*record_status, name="underlying_status", native_enum=False),
+            status_enum("underlying_status"),
             nullable=False,
         ),
         sa.ForeignKeyConstraint(["primary_asset_id"], ["assets.id"], ondelete="RESTRICT"),
@@ -154,6 +164,7 @@ def upgrade() -> None:
                 "PRODUCTION",
                 name="account_environment",
                 native_enum=False,
+                create_constraint=True,
             ),
             nullable=False,
         ),
@@ -161,7 +172,7 @@ def upgrade() -> None:
         sa.Column("base_currency", sa.String(3), nullable=False),
         sa.Column(
             "status",
-            sa.Enum(*record_status, name="account_status", native_enum=False),
+            status_enum("account_status"),
             nullable=False,
         ),
         sa.ForeignKeyConstraint(["portfolio_id"], ["portfolios.id"], ondelete="RESTRICT"),
@@ -196,6 +207,7 @@ def upgrade() -> None:
                 "FX_SPOT",
                 name="instrument_type",
                 native_enum=False,
+                create_constraint=True,
             ),
             nullable=False,
         ),
@@ -207,7 +219,7 @@ def upgrade() -> None:
         sa.Column("session_name", sa.String(80)),
         sa.Column(
             "status",
-            sa.Enum(*record_status, name="instrument_status", native_enum=False),
+            status_enum("instrument_status"),
             nullable=False,
         ),
         sa.CheckConstraint("contract_multiplier > 0", name="ck_instruments_multiplier_positive"),
@@ -244,6 +256,7 @@ def upgrade() -> None:
                 "RETIRED",
                 name="strategy_version_state",
                 native_enum=False,
+                create_constraint=True,
             ),
             nullable=False,
         ),
@@ -261,7 +274,7 @@ def upgrade() -> None:
         sa.Column("symbol", sa.String(96), nullable=False),
         sa.Column(
             "status",
-            sa.Enum(*record_status, name="venue_instrument_status", native_enum=False),
+            status_enum("venue_instrument_status"),
             nullable=False,
         ),
         sa.ForeignKeyConstraint(["instrument_id"], ["instruments.id"], ondelete="RESTRICT"),
