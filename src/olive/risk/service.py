@@ -10,7 +10,10 @@ from sqlalchemy.orm import joinedload
 from olive.domain.models import VenueInstrument
 from olive.gateway.models import SignalIntakeRecord, SignalIntakeStatus
 from olive.risk.engine import SingleTradeRiskEngine
+from olive.risk.hierarchy import HierarchicalExposureEngine
 from olive.risk.models import (
+    HierarchicalExposureLimitRecord,
+    HierarchicalRiskDecisionRecord,
     PortfolioRiskDecisionRecord,
     PortfolioRiskPolicyRecord,
     SingleTradeRiskPolicyRecord,
@@ -18,6 +21,10 @@ from olive.risk.models import (
 )
 from olive.risk.portfolio import PortfolioRiskEngine
 from olive.risk.schemas import (
+    ExposureDimension,
+    ExposureMetric,
+    HierarchicalExposureLimit,
+    HierarchicalRiskInput,
     PortfolioRiskInput,
     PortfolioRiskPolicy,
     SingleTradeRiskInput,
@@ -165,3 +172,55 @@ class PortfolioRiskService:
         return {
             key: value if isinstance(value, int) else str(value) for key, value in values.items()
         }
+
+
+class HierarchicalRiskService:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def evaluate(
+        self,
+        portfolio_risk_decision_id: uuid.UUID,
+        request: HierarchicalRiskInput,
+        *,
+        configuration_version: str,
+    ) -> HierarchicalRiskDecisionRecord:
+        portfolio_decision = await self._session.get(
+            PortfolioRiskDecisionRecord, portfolio_risk_decision_id
+        )
+        if portfolio_decision is None:
+            raise RiskEvaluationError("portfolio risk decision was not found")
+        records = (
+            await self._session.scalars(
+                select(HierarchicalExposureLimitRecord).where(
+                    HierarchicalExposureLimitRecord.configuration_version
+                    == configuration_version,
+                    HierarchicalExposureLimitRecord.enabled.is_(True),
+                )
+            )
+        ).all()
+        if not records:
+            raise RiskEvaluationError("hierarchical exposure limits are not configured")
+        limits = tuple(
+            HierarchicalExposureLimit(
+                dimension=ExposureDimension(record.dimension),
+                scope_key=record.scope_key,
+                metric=ExposureMetric(record.metric),
+                maximum=record.maximum,
+            )
+            for record in records
+        )
+        decision = HierarchicalExposureEngine().evaluate(request, limits)
+        result = HierarchicalRiskDecisionRecord(
+            portfolio_risk_decision_id=portfolio_decision.id,
+            configuration_version=configuration_version,
+            decision=decision.decision.value,
+            approved_fraction=decision.approved_fraction,
+            approved_notional=decision.approved_notional,
+            binding_limit=decision.binding_limit,
+            evaluations=decision.evaluations,
+            reasons=decision.reasons,
+        )
+        self._session.add(result)
+        await self._session.commit()
+        return result

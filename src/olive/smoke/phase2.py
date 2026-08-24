@@ -30,12 +30,23 @@ from olive.domain.models import (
 )
 from olive.gateway.models import SignalIntakeRecord, SignalIntakeStatus
 from olive.risk.models import (
+    HierarchicalExposureLimitRecord,
+    PortfolioRiskDecisionRecord,
     PortfolioRiskPolicyRecord,
     SingleTradeRiskPolicyRecord,
     TradeRiskDecisionRecord,
 )
-from olive.risk.schemas import PortfolioRiskInput, PositionSide, RiskDecisionOutcome
-from olive.risk.service import PortfolioRiskService, SingleTradeRiskService
+from olive.risk.schemas import (
+    HierarchicalRiskInput,
+    PortfolioRiskInput,
+    PositionSide,
+    RiskDecisionOutcome,
+)
+from olive.risk.service import (
+    HierarchicalRiskService,
+    PortfolioRiskService,
+    SingleTradeRiskService,
+)
 from olive.validation.models import SignalValidationPolicy
 
 
@@ -130,6 +141,16 @@ async def seed() -> None:
                     max_margin_utilization_pct=Decimal("80"),
                     max_leverage=Decimal("3"),
                     max_concurrent_positions=10,
+                )
+            )
+            session.add(
+                HierarchicalExposureLimitRecord(
+                    configuration_version="smoke-1",
+                    dimension="UNDERLYING",
+                    scope_key="BTC",
+                    metric="GROSS_NOTIONAL",
+                    maximum=Decimal("100000"),
+                    enabled=True,
                 )
             )
             await session.commit()
@@ -283,9 +304,44 @@ async def portfolio() -> None:
         await engine.dispose()
 
 
+async def hierarchy() -> None:
+    settings = get_settings()
+    engine = create_database_engine(settings.database_url)
+    sessions = create_session_factory(engine)
+    try:
+        async with sessions() as session:
+            portfolio_decision = await session.scalar(
+                select(PortfolioRiskDecisionRecord).order_by(
+                    desc(PortfolioRiskDecisionRecord.created_at)
+                )
+            )
+            if portfolio_decision is None:
+                raise RuntimeError("no Phase 5 portfolio decision is available")
+            decision = await HierarchicalRiskService(session).evaluate(
+                portfolio_decision.id,
+                HierarchicalRiskInput.model_validate(
+                    {
+                        "signal_id": uuid.uuid4(),
+                        "proposed_tags": {"UNDERLYING": ["BTC"]},
+                        "proposed_notional": "65000",
+                        "proposed_stop_risk": "1000",
+                        "proposed_margin": "21666.67",
+                    }
+                ),
+                configuration_version="smoke-1",
+            )
+            if decision.outcome is not RiskDecisionOutcome.APPROVED:
+                raise RuntimeError(f"unexpected Phase 6 decision: {decision.decision}")
+            print(f"PASS Phase 6 hierarchical limit decision: {decision.decision}")
+    finally:
+        await engine.dispose()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Olive Phase 2 live smoke test")
-    parser.add_argument("command", choices=("seed", "send", "risk", "portfolio"))
+    parser.add_argument(
+        "command", choices=("seed", "send", "risk", "portfolio", "hierarchy")
+    )
     parser.add_argument(
         "--url",
         default="http://api:8000/api/v1/signals/tradingview",
@@ -299,6 +355,8 @@ def main() -> int:
             asyncio.run(risk())
         elif args.command == "portfolio":
             asyncio.run(portfolio())
+        elif args.command == "hierarchy":
+            asyncio.run(hierarchy())
         else:
             send(args.url)
     except Exception as exc:
