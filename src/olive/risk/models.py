@@ -55,3 +55,47 @@ class TradeRiskDecisionRecord(UuidMixin, TimestampMixin, Base):
     @property
     def outcome(self) -> RiskDecisionOutcome:
         return RiskDecisionOutcome(self.decision)
+
+
+class PortfolioRiskPolicyRecord(UuidMixin, TimestampMixin, Base):
+    __tablename__ = "portfolio_risk_policies"
+    __table_args__ = (
+        UniqueConstraint("scope_key", name="uq_portfolio_risk_policy_scope"),
+        CheckConstraint("max_concurrent_positions > 0", name="ck_portfolio_positions_positive"),
+        CheckConstraint("max_leverage >= 1", name="ck_portfolio_risk_leverage"),
+    )
+
+    scope_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    max_gross_exposure_pct: Mapped[Decimal] = mapped_column(Numeric(12, 6), nullable=False)
+    max_net_exposure_pct: Mapped[Decimal] = mapped_column(Numeric(12, 6), nullable=False)
+    max_long_exposure_pct: Mapped[Decimal] = mapped_column(Numeric(12, 6), nullable=False)
+    max_short_exposure_pct: Mapped[Decimal] = mapped_column(Numeric(12, 6), nullable=False)
+    max_open_stop_risk_pct: Mapped[Decimal] = mapped_column(Numeric(12, 6), nullable=False)
+    max_margin_utilization_pct: Mapped[Decimal] = mapped_column(Numeric(12, 6), nullable=False)
+    max_leverage: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    max_concurrent_positions: Mapped[int] = mapped_column(nullable=False)
+
+
+class PortfolioRiskDecisionRecord(UuidMixin, TimestampMixin, Base):
+    __tablename__ = "portfolio_risk_decisions"
+    __table_args__ = (
+        UniqueConstraint("trade_risk_decision_id", name="uq_portfolio_decision_trade_risk"),
+    )
+
+    trade_risk_decision_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("trade_risk_decisions.id", ondelete="RESTRICT"), nullable=False
+    )
+    portfolio_risk_policy_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("portfolio_risk_policies.id", ondelete="RESTRICT"), nullable=False
+    )
+    decision: Mapped[str] = mapped_column(String(32), nullable=False)
+    approved_fraction: Mapped[Decimal] = mapped_column(Numeric(18, 12), nullable=False)
+    approved_notional: Mapped[Decimal] = mapped_column(Numeric(30, 8), nullable=False)
+    current_snapshot: Mapped[dict[str, str | int]] = mapped_column(JSON, nullable=False)
+    projected_snapshot: Mapped[dict[str, str | int]] = mapped_column(JSON, nullable=False)
+    limits: Mapped[dict[str, str | int]] = mapped_column(JSON, nullable=False)
+    reasons: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+
+    @property
+    def outcome(self) -> RiskDecisionOutcome:
+        return RiskDecisionOutcome(self.decision)

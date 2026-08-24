@@ -51,3 +51,55 @@ class SingleTradeRiskDecision(BaseModel):
     multipliers: dict[str, Decimal]
     limits: dict[str, Decimal | None]
     reasons: list[str]
+
+
+class PositionSide(StrEnum):
+    LONG = "LONG"
+    SHORT = "SHORT"
+
+
+class PortfolioPosition(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    side: PositionSide
+    notional: Decimal = Field(ge=0)
+    stop_risk: Decimal = Field(ge=0)
+    margin_used: Decimal = Field(ge=0)
+
+
+class PortfolioRiskInput(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    signal_id: uuid.UUID
+    equity: Decimal = Field(gt=0)
+    proposed_side: PositionSide
+    proposed_notional: Decimal = Field(gt=0)
+    proposed_stop_risk: Decimal = Field(gt=0)
+    proposed_margin: Decimal = Field(ge=0)
+    positions: tuple[PortfolioPosition, ...] = ()
+
+
+class PortfolioRiskPolicy(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    max_gross_exposure_pct: Decimal = Field(gt=0)
+    max_net_exposure_pct: Decimal = Field(gt=0)
+    max_long_exposure_pct: Decimal = Field(gt=0)
+    max_short_exposure_pct: Decimal = Field(gt=0)
+    max_open_stop_risk_pct: Decimal = Field(gt=0)
+    max_margin_utilization_pct: Decimal = Field(gt=0, le=100)
+    max_leverage: Decimal = Field(ge=1)
+    max_concurrent_positions: int = Field(gt=0)
+
+
+class PortfolioRiskDecision(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    decision: RiskDecisionOutcome
+    signal_id: uuid.UUID
+    approved_fraction: Decimal = Field(ge=0, le=1)
+    approved_notional: Decimal = Field(ge=0)
+    current: dict[str, Decimal | int]
+    projected: dict[str, Decimal | int]
+    limits: dict[str, Decimal | int]
+    reasons: list[str]
