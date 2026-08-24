@@ -107,6 +107,14 @@ See `docs/phase-5.md` for the complete Phase 5 contract.
 
 See `docs/phase-6.md` for the complete Phase 6 contract.
 
+## Phase 7 capabilities
+
+- Rolling return correlations and deterministic connected-component clusters
+- Maximum correlated-position and cluster stop-risk controls
+- Transparent reduce/reject outcomes with persisted correlation evidence
+
+See `docs/phase-7.md` for the complete Phase 7 contract.
+
 ## Acceptance automation
 
 The `Olive acceptance` workflow runs unit/static checks, validates the Alembic chain, builds the complete Compose stack, applies migrations, checks schema drift, and probes both health contracts. The next phase must not begin until this workflow passes in a Docker-capable runner.

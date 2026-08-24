@@ -142,3 +142,48 @@ class HierarchicalRiskDecisionRecord(UuidMixin, TimestampMixin, Base):
     @property
     def outcome(self) -> RiskDecisionOutcome:
         return RiskDecisionOutcome(self.decision)
+
+
+class CorrelationRiskPolicyRecord(UuidMixin, TimestampMixin, Base):
+    __tablename__ = "correlation_risk_policies"
+    __table_args__ = (
+        UniqueConstraint("configuration_version", name="uq_correlation_policy_version"),
+        CheckConstraint("minimum_observations >= 3", name="ck_correlation_minimum_history"),
+        CheckConstraint(
+            "lookback_observations >= minimum_observations", name="ck_correlation_lookback"
+        ),
+    )
+
+    configuration_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    lookback_observations: Mapped[int] = mapped_column(nullable=False)
+    minimum_observations: Mapped[int] = mapped_column(nullable=False)
+    cluster_threshold: Mapped[Decimal] = mapped_column(Numeric(10, 8), nullable=False)
+    max_correlated_positions: Mapped[int] = mapped_column(nullable=False)
+    max_cluster_stop_risk: Mapped[Decimal] = mapped_column(Numeric(30, 8), nullable=False)
+
+
+class CorrelationRiskDecisionRecord(UuidMixin, TimestampMixin, Base):
+    __tablename__ = "correlation_risk_decisions"
+    __table_args__ = (
+        UniqueConstraint("hierarchical_risk_decision_id", name="uq_correlation_decision_hierarchy"),
+    )
+
+    hierarchical_risk_decision_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("hierarchical_risk_decisions.id", ondelete="RESTRICT"), nullable=False
+    )
+    correlation_risk_policy_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("correlation_risk_policies.id", ondelete="RESTRICT"), nullable=False
+    )
+    decision: Mapped[str] = mapped_column(String(32), nullable=False)
+    approved_fraction: Mapped[Decimal] = mapped_column(Numeric(18, 12), nullable=False)
+    approved_notional: Mapped[Decimal] = mapped_column(Numeric(30, 8), nullable=False)
+    proposed_cluster: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    correlations: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False)
+    cluster_position_count: Mapped[int] = mapped_column(nullable=False)
+    current_cluster_stop_risk: Mapped[Decimal] = mapped_column(Numeric(30, 8), nullable=False)
+    projected_cluster_stop_risk: Mapped[Decimal] = mapped_column(Numeric(30, 8), nullable=False)
+    reasons: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+
+    @property
+    def outcome(self) -> RiskDecisionOutcome:
+        return RiskDecisionOutcome(self.decision)

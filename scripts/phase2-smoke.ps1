@@ -34,7 +34,10 @@ try {
     docker compose run --rm api python -m olive.smoke.phase2 hierarchy
     if ($LASTEXITCODE -ne 0) { throw "Phase 6 hierarchical-risk verification failed." }
 
-    Write-Host "Phase 2/3/4/5/6 end-to-end smoke test passed." -ForegroundColor Green
+    docker compose run --rm api python -m olive.smoke.phase2 correlation
+    if ($LASTEXITCODE -ne 0) { throw "Phase 7 correlation-risk verification failed." }
+
+    Write-Host "Phase 2/3/4/5/6/7 end-to-end smoke test passed." -ForegroundColor Green
 }
 finally {
     docker compose down --volumes
