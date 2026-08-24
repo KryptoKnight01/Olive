@@ -173,6 +173,17 @@ async def test_authenticated_signal_is_persisted_as_received(
         assert record.venue_instrument_id is not None
 
 
+def test_signal_environment_uses_wire_values_in_database() -> None:
+    environment_type = SignalIntakeRecord.__table__.c.environment.type
+    assert environment_type.enums == [
+        "development",
+        "testing",
+        "paper",
+        "staging",
+        "production",
+    ]
+
+
 async def test_duplicate_signal_id_is_rejected(gateway_context: GatewayTestContext) -> None:
     signal_id = uuid.uuid4()
     payload = valid_payload(signal_id)

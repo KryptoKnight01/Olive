@@ -37,6 +37,7 @@ def gateway_enum(enum_type: type[StrEnum], name: str) -> Enum:
         native_enum=False,
         create_constraint=True,
         validate_strings=True,
+        values_callable=lambda members: [member.value for member in members],
     )
 
 
