@@ -99,3 +99,46 @@ class PortfolioRiskDecisionRecord(UuidMixin, TimestampMixin, Base):
     @property
     def outcome(self) -> RiskDecisionOutcome:
         return RiskDecisionOutcome(self.decision)
+
+
+class HierarchicalExposureLimitRecord(UuidMixin, TimestampMixin, Base):
+    __tablename__ = "hierarchical_exposure_limits"
+    __table_args__ = (
+        UniqueConstraint(
+            "configuration_version",
+            "dimension",
+            "scope_key",
+            "metric",
+            name="uq_hierarchical_limit_identity",
+        ),
+        CheckConstraint("maximum > 0", name="ck_hierarchical_limit_positive"),
+    )
+
+    configuration_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    dimension: Mapped[str] = mapped_column(String(32), nullable=False)
+    scope_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    metric: Mapped[str] = mapped_column(String(32), nullable=False)
+    maximum: Mapped[Decimal] = mapped_column(Numeric(30, 8), nullable=False)
+    enabled: Mapped[bool] = mapped_column(nullable=False, default=True)
+
+
+class HierarchicalRiskDecisionRecord(UuidMixin, TimestampMixin, Base):
+    __tablename__ = "hierarchical_risk_decisions"
+    __table_args__ = (
+        UniqueConstraint("portfolio_risk_decision_id", name="uq_hierarchy_decision_portfolio"),
+    )
+
+    portfolio_risk_decision_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("portfolio_risk_decisions.id", ondelete="RESTRICT"), nullable=False
+    )
+    configuration_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    decision: Mapped[str] = mapped_column(String(32), nullable=False)
+    approved_fraction: Mapped[Decimal] = mapped_column(Numeric(18, 12), nullable=False)
+    approved_notional: Mapped[Decimal] = mapped_column(Numeric(30, 8), nullable=False)
+    binding_limit: Mapped[str | None] = mapped_column(String(500))
+    evaluations: Mapped[list[dict[str, str]]] = mapped_column(JSON, nullable=False)
+    reasons: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+
+    @property
+    def outcome(self) -> RiskDecisionOutcome:
+        return RiskDecisionOutcome(self.decision)

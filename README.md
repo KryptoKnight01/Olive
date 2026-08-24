@@ -98,6 +98,15 @@ See `docs/phase-4.md` for the complete Phase 4 contract.
 
 See `docs/phase-5.md` for the complete Phase 5 contract.
 
+## Phase 6 capabilities
+
+- Versioned limits for instrument, underlying, strategy, asset class, sector, industry, theme, venue, account, and portfolio
+- Gross notional, open stop-risk, margin, and position-count controls
+- Multi-value classification membership and deterministic aggregation
+- Most-restrictive-limit-wins sizing with complete evaluation evidence
+
+See `docs/phase-6.md` for the complete Phase 6 contract.
+
 ## Acceptance automation
 
 The `Olive acceptance` workflow runs unit/static checks, validates the Alembic chain, builds the complete Compose stack, applies migrations, checks schema drift, and probes both health contracts. The next phase must not begin until this workflow passes in a Docker-capable runner.

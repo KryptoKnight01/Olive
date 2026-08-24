@@ -103,3 +103,64 @@ class PortfolioRiskDecision(BaseModel):
     projected: dict[str, Decimal | int]
     limits: dict[str, Decimal | int]
     reasons: list[str]
+
+
+class ExposureDimension(StrEnum):
+    INSTRUMENT = "INSTRUMENT"
+    UNDERLYING = "UNDERLYING"
+    STRATEGY = "STRATEGY"
+    ASSET_CLASS = "ASSET_CLASS"
+    SECTOR = "SECTOR"
+    INDUSTRY = "INDUSTRY"
+    THEME = "THEME"
+    VENUE = "VENUE"
+    ACCOUNT = "ACCOUNT"
+    PORTFOLIO = "PORTFOLIO"
+
+
+class ExposureMetric(StrEnum):
+    GROSS_NOTIONAL = "GROSS_NOTIONAL"
+    OPEN_STOP_RISK = "OPEN_STOP_RISK"
+    MARGIN_USED = "MARGIN_USED"
+    POSITION_COUNT = "POSITION_COUNT"
+
+
+class HierarchicalExposureLimit(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    dimension: ExposureDimension
+    scope_key: str = Field(min_length=1, max_length=200)
+    metric: ExposureMetric
+    maximum: Decimal = Field(gt=0)
+
+
+class ExposurePosition(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    tags: dict[ExposureDimension, tuple[str, ...]]
+    gross_notional: Decimal = Field(ge=0)
+    open_stop_risk: Decimal = Field(ge=0)
+    margin_used: Decimal = Field(ge=0)
+
+
+class HierarchicalRiskInput(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    signal_id: uuid.UUID
+    proposed_tags: dict[ExposureDimension, tuple[str, ...]]
+    proposed_notional: Decimal = Field(gt=0)
+    proposed_stop_risk: Decimal = Field(gt=0)
+    proposed_margin: Decimal = Field(ge=0)
+    positions: tuple[ExposurePosition, ...] = ()
+
+
+class HierarchicalRiskDecision(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    decision: RiskDecisionOutcome
+    signal_id: uuid.UUID
+    approved_fraction: Decimal = Field(ge=0, le=1)
+    approved_notional: Decimal = Field(ge=0)
+    binding_limit: str | None
+    evaluations: list[dict[str, str]]
+    reasons: list[str]
