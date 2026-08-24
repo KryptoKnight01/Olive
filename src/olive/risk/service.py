@@ -10,8 +10,19 @@ from sqlalchemy.orm import joinedload
 from olive.domain.models import VenueInstrument
 from olive.gateway.models import SignalIntakeRecord, SignalIntakeStatus
 from olive.risk.engine import SingleTradeRiskEngine
-from olive.risk.models import SingleTradeRiskPolicyRecord, TradeRiskDecisionRecord
-from olive.risk.schemas import SingleTradeRiskInput, SingleTradeRiskPolicy
+from olive.risk.models import (
+    PortfolioRiskDecisionRecord,
+    PortfolioRiskPolicyRecord,
+    SingleTradeRiskPolicyRecord,
+    TradeRiskDecisionRecord,
+)
+from olive.risk.portfolio import PortfolioRiskEngine
+from olive.risk.schemas import (
+    PortfolioRiskInput,
+    PortfolioRiskPolicy,
+    SingleTradeRiskInput,
+    SingleTradeRiskPolicy,
+)
 
 
 class RiskEvaluationError(Exception):
@@ -95,3 +106,62 @@ class SingleTradeRiskService:
         self._session.add(record)
         await self._session.commit()
         return record
+
+
+class PortfolioRiskService:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def evaluate(
+        self,
+        trade_risk_decision_id: uuid.UUID,
+        request: PortfolioRiskInput,
+        *,
+        scope_key: str = "default",
+    ) -> PortfolioRiskDecisionRecord:
+        trade_decision = await self._session.get(
+            TradeRiskDecisionRecord, trade_risk_decision_id
+        )
+        if trade_decision is None:
+            raise RiskEvaluationError("single-trade risk decision was not found")
+        policy_record = await self._session.scalar(
+            select(PortfolioRiskPolicyRecord).where(
+                PortfolioRiskPolicyRecord.scope_key == scope_key
+            )
+        )
+        if policy_record is None:
+            raise RiskEvaluationError("portfolio risk policy is not configured")
+
+        decision = PortfolioRiskEngine().evaluate(
+            request,
+            PortfolioRiskPolicy(
+                max_gross_exposure_pct=policy_record.max_gross_exposure_pct,
+                max_net_exposure_pct=policy_record.max_net_exposure_pct,
+                max_long_exposure_pct=policy_record.max_long_exposure_pct,
+                max_short_exposure_pct=policy_record.max_short_exposure_pct,
+                max_open_stop_risk_pct=policy_record.max_open_stop_risk_pct,
+                max_margin_utilization_pct=policy_record.max_margin_utilization_pct,
+                max_leverage=policy_record.max_leverage,
+                max_concurrent_positions=policy_record.max_concurrent_positions,
+            ),
+        )
+        record = PortfolioRiskDecisionRecord(
+            trade_risk_decision_id=trade_decision.id,
+            portfolio_risk_policy_id=policy_record.id,
+            decision=decision.decision.value,
+            approved_fraction=decision.approved_fraction,
+            approved_notional=decision.approved_notional,
+            current_snapshot=self._json_metrics(decision.current),
+            projected_snapshot=self._json_metrics(decision.projected),
+            limits=self._json_metrics(decision.limits),
+            reasons=decision.reasons,
+        )
+        self._session.add(record)
+        await self._session.commit()
+        return record
+
+    @staticmethod
+    def _json_metrics(values: dict[str, Decimal | int]) -> dict[str, str | int]:
+        return {
+            key: value if isinstance(value, int) else str(value) for key, value in values.items()
+        }

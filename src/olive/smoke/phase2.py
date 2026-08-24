@@ -29,9 +29,13 @@ from olive.domain.models import (
     VenueInstrument,
 )
 from olive.gateway.models import SignalIntakeRecord, SignalIntakeStatus
-from olive.risk.models import SingleTradeRiskPolicyRecord
-from olive.risk.schemas import RiskDecisionOutcome
-from olive.risk.service import SingleTradeRiskService
+from olive.risk.models import (
+    PortfolioRiskPolicyRecord,
+    SingleTradeRiskPolicyRecord,
+    TradeRiskDecisionRecord,
+)
+from olive.risk.schemas import PortfolioRiskInput, PositionSide, RiskDecisionOutcome
+from olive.risk.service import PortfolioRiskService, SingleTradeRiskService
 from olive.validation.models import SignalValidationPolicy
 
 
@@ -113,6 +117,19 @@ async def seed() -> None:
                     max_margin=Decimal("50000"),
                     min_stop_distance_pct=Decimal("0.25"),
                     max_stop_distance_pct=Decimal("10"),
+                )
+            )
+            session.add(
+                PortfolioRiskPolicyRecord(
+                    scope_key="default",
+                    max_gross_exposure_pct=Decimal("300"),
+                    max_net_exposure_pct=Decimal("200"),
+                    max_long_exposure_pct=Decimal("250"),
+                    max_short_exposure_pct=Decimal("150"),
+                    max_open_stop_risk_pct=Decimal("5"),
+                    max_margin_utilization_pct=Decimal("80"),
+                    max_leverage=Decimal("3"),
+                    max_concurrent_positions=10,
                 )
             )
             await session.commit()
@@ -232,9 +249,43 @@ async def risk() -> None:
         await engine.dispose()
 
 
+async def portfolio() -> None:
+    settings = get_settings()
+    engine = create_database_engine(settings.database_url)
+    sessions = create_session_factory(engine)
+    try:
+        async with sessions() as session:
+            trade_decision = await session.scalar(
+                select(TradeRiskDecisionRecord).order_by(
+                    desc(TradeRiskDecisionRecord.created_at)
+                )
+            )
+            if trade_decision is None:
+                raise RuntimeError("no Phase 4 trade decision is available")
+            decision = await PortfolioRiskService(session).evaluate(
+                trade_decision.id,
+                PortfolioRiskInput(
+                    signal_id=uuid.uuid4(),
+                    equity=trade_decision.equity_snapshot,
+                    proposed_side=PositionSide.LONG,
+                    proposed_notional=Decimal("65000"),
+                    proposed_stop_risk=Decimal("1000"),
+                    proposed_margin=Decimal("21666.67"),
+                ),
+            )
+            if decision.outcome is not RiskDecisionOutcome.APPROVED:
+                raise RuntimeError(f"unexpected Phase 5 decision: {decision.decision}")
+            print(
+                "PASS Phase 5 projected portfolio decision: "
+                f"notional={decision.approved_notional}"
+            )
+    finally:
+        await engine.dispose()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Olive Phase 2 live smoke test")
-    parser.add_argument("command", choices=("seed", "send", "risk"))
+    parser.add_argument("command", choices=("seed", "send", "risk", "portfolio"))
     parser.add_argument(
         "--url",
         default="http://api:8000/api/v1/signals/tradingview",
@@ -246,6 +297,8 @@ def main() -> int:
             asyncio.run(seed())
         elif args.command == "risk":
             asyncio.run(risk())
+        elif args.command == "portfolio":
+            asyncio.run(portfolio())
         else:
             send(args.url)
     except Exception as exc:

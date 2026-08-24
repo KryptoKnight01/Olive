@@ -88,6 +88,16 @@ See `docs/phase-3.md` for the complete Phase 3 contract.
 
 See `docs/phase-4.md` for the complete Phase 4 contract.
 
+## Phase 5 capabilities
+
+- Projected gross, net, long, and short exposure checks
+- Open stop-risk, margin-utilization, and leverage limits
+- Maximum concurrent-position enforcement
+- Safe proportional size reduction using the most restrictive remaining capacity
+- Persisted current state, projected state, limits, outcome, and reasons
+
+See `docs/phase-5.md` for the complete Phase 5 contract.
+
 ## Acceptance automation
 
 The `Olive acceptance` workflow runs unit/static checks, validates the Alembic chain, builds the complete Compose stack, applies migrations, checks schema drift, and probes both health contracts. The next phase must not begin until this workflow passes in a Docker-capable runner.
