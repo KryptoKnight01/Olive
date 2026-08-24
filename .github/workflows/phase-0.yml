@@ -44,7 +44,7 @@ jobs:
         run: |
           curl --fail --show-error http://localhost:8000/health/live
           curl --fail --show-error http://localhost:8000/health/ready
-      - name: Verify signed signal intake and replay protection
+      - name: Verify signed signal intake, validation, and replay protection
         run: |
           docker compose run --rm api python -m olive.smoke.phase2 seed
           docker compose run --rm api python -m olive.smoke.phase2 send

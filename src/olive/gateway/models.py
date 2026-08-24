@@ -15,6 +15,7 @@ from olive.domain.models import StrategyVersion, TimestampMixin, UuidMixin, Venu
 class SignalIntakeStatus(StrEnum):
     RECEIVED = "RECEIVED"
     REJECTED = "REJECTED"
+    RISK_REVIEW = "RISK_REVIEW"
 
 
 class SignalDirection(StrEnum):
@@ -84,6 +85,8 @@ class SignalIntakeRecord(UuidMixin, TimestampMixin, Base):
     timeframe: Mapped[str | None] = mapped_column(String(32))
     setup_score: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
     regime: Mapped[str | None] = mapped_column(String(64))
+    validation_details: Mapped[dict[str, object] | None] = mapped_column(JSON)
+    validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     strategy_version: Mapped[StrategyVersion | None] = relationship()
     venue_instrument: Mapped[VenueInstrument | None] = relationship()

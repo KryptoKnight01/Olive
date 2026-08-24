@@ -1,6 +1,6 @@
 # Olive Trading Platform
 
-Olive is a risk-first trading platform built in acceptance-gated phases. The current Phase 1 implementation contains architecture and canonical asset-master behavior, but no signal, risk-decision, order, execution, or trading behavior.
+Olive is a risk-first trading platform built in acceptance-gated phases. The current Phase 3 implementation securely receives and validates candidate signals, but makes no risk decision and cannot place orders.
 
 ## Phase 0 capabilities
 
@@ -63,7 +63,19 @@ With Docker Desktop running, execute:
 .\scripts\phase2-smoke.ps1
 ```
 
-The command builds a temporary local stack, migrates and seeds PostgreSQL, sends a genuinely signed signal, confirms it is stored as `RECEIVED`, verifies nonce-replay and duplicate-ID rejection, then removes the temporary containers and volumes.
+The command builds a temporary local stack, migrates and seeds PostgreSQL, sends a genuinely signed signal, confirms it advances to `RISK_REVIEW`, verifies nonce-replay and duplicate-ID rejection, then removes the temporary containers and volumes.
+
+## Phase 3 capabilities
+
+- Deny-by-default validation policies per strategy version
+- Strategy/version, venue, instrument, underlying, and asset enablement checks
+- Direction and timeframe permissions
+- Entry/reference deviation and directional stop/target validation
+- Minimum expected R:R and setup-score thresholds
+- Timezone-aware weekday, regular-session, and overnight-session checks
+- Persisted deterministic validation outcomes and `RISK_REVIEW` handoff
+
+See `docs/phase-3.md` for the complete Phase 3 contract.
 
 ## Acceptance automation
 
