@@ -11,11 +11,11 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from olive.config import Settings
 from olive.domain.models import (
     Instrument,
-    RecordStatus,
     Strategy,
     StrategyVersion,
     Underlying,
@@ -25,6 +25,8 @@ from olive.domain.models import (
 from olive.gateway.errors import DuplicateSignalError, SignalIntakeError
 from olive.gateway.models import SignalIntakeRecord, SignalIntakeStatus
 from olive.gateway.schemas import SignalIntakeResponse, SignalPayload
+from olive.validation.models import SignalValidationPolicy
+from olive.validation.service import SignalValidationEngine
 
 
 class SignalIntakeService:
@@ -111,13 +113,37 @@ class SignalIntakeService:
                 "venue instrument mapping is unknown or inactive",
             )
 
+        policy = await self._session.scalar(
+            select(SignalValidationPolicy).where(
+                SignalValidationPolicy.strategy_version_id == strategy_version.id
+            )
+        )
+        validation_failure = SignalValidationEngine().validate(
+            payload, strategy_version, mapping, policy
+        )
+        if validation_failure is not None:
+            await self._reject_payload(
+                payload,
+                raw,
+                payload_hash,
+                validation_failure.code,
+                validation_failure.reason,
+                validation_details={
+                    "outcome": "REJECTED",
+                    "rule": validation_failure.code,
+                    **validation_failure.details,
+                },
+            )
+
         record = self._record_from_payload(
             payload,
             raw,
             payload_hash,
-            status=SignalIntakeStatus.RECEIVED,
+            status=SignalIntakeStatus.RISK_REVIEW,
             strategy_version_id=strategy_version.id,
             venue_instrument_id=mapping.id,
+            validation_details={"outcome": "PASSED", "next_status": "RISK_REVIEW"},
+            validated_at=now,
         )
         await self._persist(record)
         return SignalIntakeResponse(
@@ -142,6 +168,7 @@ class SignalIntakeService:
             StrategyVersion | None,
             await self._session.scalar(
                 select(StrategyVersion)
+                .options(joinedload(StrategyVersion.strategy))
                 .join(Strategy, Strategy.id == StrategyVersion.strategy_id)
                 .where(
                     Strategy.code == payload.strategy_id,
@@ -156,15 +183,19 @@ class SignalIntakeService:
             VenueInstrument | None,
             await self._session.scalar(
                 select(VenueInstrument)
+                .options(
+                    joinedload(VenueInstrument.venue),
+                    joinedload(VenueInstrument.instrument).joinedload(Instrument.underlying),
+                    joinedload(VenueInstrument.instrument).joinedload(Instrument.base_asset),
+                    joinedload(VenueInstrument.instrument).joinedload(Instrument.quote_asset),
+                    joinedload(VenueInstrument.instrument).joinedload(Instrument.settlement_asset),
+                )
                 .join(Venue, Venue.id == VenueInstrument.venue_id)
                 .join(Instrument, Instrument.id == VenueInstrument.instrument_id)
                 .join(Underlying, Underlying.id == Instrument.underlying_id)
                 .where(
                     Venue.code == payload.venue,
                     VenueInstrument.symbol == payload.instrument,
-                    VenueInstrument.status == RecordStatus.ACTIVE,
-                    Instrument.status == RecordStatus.ACTIVE,
-                    Underlying.status == RecordStatus.ACTIVE,
                 )
             ),
         )
@@ -176,6 +207,7 @@ class SignalIntakeService:
         payload_hash: str,
         code: str,
         reason: str,
+        validation_details: dict[str, object] | None = None,
     ) -> NoReturn:
         record = self._record_from_payload(
             payload,
@@ -184,6 +216,8 @@ class SignalIntakeService:
             status=SignalIntakeStatus.REJECTED,
             rejection_code=code,
             rejection_reason=reason,
+            validation_details=validation_details,
+            validated_at=self._clock().astimezone(UTC) if validation_details else None,
         )
         await self._persist(record)
         raise SignalIntakeError(reason, code=code, intake_id=record.id)
@@ -219,6 +253,8 @@ class SignalIntakeService:
         rejection_reason: str | None = None,
         strategy_version_id: uuid.UUID | None = None,
         venue_instrument_id: uuid.UUID | None = None,
+        validation_details: dict[str, object] | None = None,
+        validated_at: datetime | None = None,
     ) -> SignalIntakeRecord:
         return SignalIntakeRecord(
             signal_id=payload.signal_id,
@@ -242,6 +278,8 @@ class SignalIntakeService:
             timeframe=payload.timeframe,
             setup_score=payload.setup_score,
             regime=payload.regime,
+            validation_details=validation_details,
+            validated_at=validated_at,
         )
 
     async def _persist(self, record: SignalIntakeRecord) -> None:

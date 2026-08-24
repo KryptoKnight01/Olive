@@ -28,6 +28,7 @@ from olive.domain.models import (
     Venue,
     VenueInstrument,
 )
+from olive.validation.models import SignalValidationPolicy
 
 
 async def seed() -> None:
@@ -87,6 +88,15 @@ async def seed() -> None:
                     venue_id=venue.id,
                     instrument_id=instrument.id,
                     symbol="BTC-USD",
+                )
+            )
+            session.add(
+                SignalValidationPolicy(
+                    strategy_version_id=version.id,
+                    allowed_timeframes=["15m"],
+                    max_entry_deviation_pct=Decimal("1.0"),
+                    min_expected_rr=Decimal("1.5"),
+                    min_setup_score=Decimal("70"),
                 )
             )
             await session.commit()
@@ -154,7 +164,7 @@ def send(url: str) -> None:
     headers = signed_headers(body, nonce)
 
     accepted_status, accepted = post(url, body, headers)
-    if accepted_status != 202 or accepted.get("status") != "RECEIVED":
+    if accepted_status != 202 or accepted.get("status") != "RISK_REVIEW":
         raise RuntimeError(f"signed signal was not received: {accepted_status} {accepted}")
     print(f"PASS signed signal received: intake_id={accepted['intake_id']}")
 
@@ -168,6 +178,16 @@ def send(url: str) -> None:
     if duplicate_status != 409 or duplicate.get("code") != "DUPLICATE_SIGNAL":
         raise RuntimeError(f"duplicate signal ID was not rejected: {duplicate_status} {duplicate}")
     print("PASS duplicate signal ID rejected with a fresh nonce")
+
+    invalid_payload = json.loads(body)
+    invalid_payload["signal_id"] = str(uuid.uuid4())
+    invalid_payload["stop"] = "66000.00"
+    invalid_body = json.dumps(invalid_payload, separators=(",", ":"), sort_keys=True).encode()
+    invalid_headers = signed_headers(invalid_body, f"smoke-{uuid.uuid4()}")
+    invalid_status, invalid = post(url, invalid_body, invalid_headers)
+    if invalid_status != 422 or invalid.get("code") != "INVALID_STOP_TARGET_LOGIC":
+        raise RuntimeError(f"invalid Phase 3 signal was not rejected: {invalid_status} {invalid}")
+    print("PASS Phase 3 stop/target validation rejected an illogical signal")
 
 
 def main() -> int:

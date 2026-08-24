@@ -19,6 +19,7 @@ from olive.domain.models import (
     AssetClass,
     Instrument,
     InstrumentType,
+    RecordStatus,
     Strategy,
     StrategyVersion,
     Underlying,
@@ -29,6 +30,7 @@ from olive.gateway.auth import GatewayHeaders
 from olive.gateway.errors import GatewayAuthenticationError
 from olive.gateway.models import SignalIntakeRecord, SignalIntakeStatus
 from olive.main import app
+from olive.validation.models import SignalValidationPolicy
 
 
 class AllowAuthenticator:
@@ -117,6 +119,15 @@ async def seed_reference_data(sessions: async_sessionmaker[AsyncSession]) -> Non
                 symbol="BTC-USD",
             )
         )
+        session.add(
+            SignalValidationPolicy(
+                strategy_version_id=version.id,
+                allowed_timeframes=["15m"],
+                max_entry_deviation_pct=Decimal("1.0"),
+                min_expected_rr=Decimal("1.5"),
+                min_setup_score=Decimal("70"),
+            )
+        )
         await session.commit()
 
 
@@ -164,7 +175,7 @@ async def test_authenticated_signal_is_persisted_as_received(
         headers=gateway_headers(),
     )
     assert response.status_code == 202, response.text
-    assert response.json()["status"] == "RECEIVED"
+    assert response.json()["status"] == "RISK_REVIEW"
 
     async with gateway_context.sessions() as session:
         record = await session.get(SignalIntakeRecord, uuid.UUID(response.json()["intake_id"]))
@@ -196,6 +207,103 @@ async def test_duplicate_signal_id_is_rejected(gateway_context: GatewayTestConte
     assert first.status_code == 202
     assert second.status_code == 409
     assert second.json()["code"] == "DUPLICATE_SIGNAL"
+
+
+@pytest.mark.parametrize(
+    ("changes", "expected_code"),
+    [
+        ({"entry_price": "66000.00"}, "ENTRY_DEVIATION_EXCEEDED"),
+        ({"stop": "66000.00"}, "INVALID_STOP_TARGET_LOGIC"),
+        ({"targets": ["64000.00"]}, "INVALID_STOP_TARGET_LOGIC"),
+        ({"expected_rr": "1.0"}, "MINIMUM_RR_NOT_MET"),
+        ({"setup_score": "60"}, "MINIMUM_SETUP_SCORE_NOT_MET"),
+        ({"timeframe": "1m"}, "TIMEFRAME_NOT_ALLOWED"),
+    ],
+)
+async def test_phase3_validation_rejections_are_persisted(
+    gateway_context: GatewayTestContext,
+    changes: dict[str, object],
+    expected_code: str,
+) -> None:
+    payload = valid_payload()
+    payload.update(changes)
+    response = await gateway_context.client.post(
+        "/api/v1/signals/tradingview", json=payload, headers=gateway_headers()
+    )
+    assert response.status_code == 422
+    assert response.json()["code"] == expected_code
+
+    async with gateway_context.sessions() as session:
+        record = await session.get(SignalIntakeRecord, uuid.UUID(response.json()["intake_id"]))
+        assert record is not None
+        assert record.status == SignalIntakeStatus.REJECTED
+        assert record.validation_details is not None
+        assert record.validation_details["rule"] == expected_code
+        assert record.validated_at is not None
+
+
+async def test_phase3_direction_policy_is_enforced(
+    gateway_context: GatewayTestContext,
+) -> None:
+    async with gateway_context.sessions() as session:
+        policy = await session.scalar(select(SignalValidationPolicy))
+        assert policy is not None
+        policy.allowed_directions = ["SHORT"]
+        await session.commit()
+
+    response = await gateway_context.client.post(
+        "/api/v1/signals/tradingview", json=valid_payload(), headers=gateway_headers()
+    )
+    assert response.status_code == 422
+    assert response.json()["code"] == "DIRECTION_NOT_ALLOWED"
+
+
+async def test_phase3_session_policy_is_enforced(
+    gateway_context: GatewayTestContext,
+) -> None:
+    async with gateway_context.sessions() as session:
+        policy = await session.scalar(select(SignalValidationPolicy))
+        assert policy is not None
+        policy.allowed_weekdays = []
+        await session.commit()
+
+    response = await gateway_context.client.post(
+        "/api/v1/signals/tradingview", json=valid_payload(), headers=gateway_headers()
+    )
+    assert response.status_code == 422
+    assert response.json()["code"] == "SESSION_CLOSED"
+
+
+async def test_phase3_disabled_strategy_is_rejected(
+    gateway_context: GatewayTestContext,
+) -> None:
+    async with gateway_context.sessions() as session:
+        strategy = await session.scalar(select(Strategy))
+        assert strategy is not None
+        strategy.status = RecordStatus.SUSPENDED
+        await session.commit()
+
+    response = await gateway_context.client.post(
+        "/api/v1/signals/tradingview", json=valid_payload(), headers=gateway_headers()
+    )
+    assert response.status_code == 422
+    assert response.json()["code"] == "STRATEGY_DISABLED"
+
+
+async def test_phase3_disabled_instrument_is_rejected(
+    gateway_context: GatewayTestContext,
+) -> None:
+    async with gateway_context.sessions() as session:
+        instrument = await session.scalar(select(Instrument))
+        assert instrument is not None
+        instrument.status = RecordStatus.SUSPENDED
+        await session.commit()
+
+    response = await gateway_context.client.post(
+        "/api/v1/signals/tradingview", json=valid_payload(), headers=gateway_headers()
+    )
+    assert response.status_code == 422
+    assert response.json()["code"] == "INSTRUMENT_DISABLED"
 
 
 async def test_unknown_instrument_rejection_is_persisted(
