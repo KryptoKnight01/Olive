@@ -7,6 +7,8 @@ services:
       OLIVE_DATABASE_URL: postgresql+asyncpg://olive:olive@postgres:5432/olive
       OLIVE_REDIS_URL: redis://redis:6379/0
       OLIVE_LOG_LEVEL: INFO
+      OLIVE_SIGNAL_HMAC_KEY_ID: ${OLIVE_SIGNAL_HMAC_KEY_ID:-tradingview-development}
+      OLIVE_SIGNAL_HMAC_SECRET: ${OLIVE_SIGNAL_HMAC_SECRET:-}
     ports:
       - "8000:8000"
     depends_on:

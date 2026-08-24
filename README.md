@@ -55,6 +55,16 @@ See `docs/phase-1.md` for the complete Phase 1 contract.
 
 See `docs/phase-2.md` for the complete Phase 2 security and acceptance contract.
 
+### Run the Phase 2 live smoke test
+
+With Docker Desktop running, execute:
+
+```powershell
+.\scripts\phase2-smoke.ps1
+```
+
+The command builds a temporary local stack, migrates and seeds PostgreSQL, sends a genuinely signed signal, confirms it is stored as `RECEIVED`, verifies nonce-replay and duplicate-ID rejection, then removes the temporary containers and volumes.
+
 ## Acceptance automation
 
 The `Olive acceptance` workflow runs unit/static checks, validates the Alembic chain, builds the complete Compose stack, applies migrations, checks schema drift, and probes both health contracts. The next phase must not begin until this workflow passes in a Docker-capable runner.
