@@ -11,9 +11,17 @@ $env:OLIVE_SIGNAL_HMAC_KEY_ID = "tradingview-development"
 
 try {
     docker compose up --build --detach --wait
+    if ($LASTEXITCODE -ne 0) { throw "Docker Compose failed to start the Olive stack." }
+
     docker compose run --rm api alembic upgrade head
+    if ($LASTEXITCODE -ne 0) { throw "Database migration failed." }
+
     docker compose run --rm api python -m olive.smoke.phase2 seed
+    if ($LASTEXITCODE -ne 0) { throw "Phase 2 smoke data seeding failed." }
+
     docker compose run --rm api python -m olive.smoke.phase2 send
+    if ($LASTEXITCODE -ne 0) { throw "Phase 2 signed-signal verification failed." }
+
     Write-Host "Phase 2 end-to-end smoke test passed." -ForegroundColor Green
 }
 finally {
