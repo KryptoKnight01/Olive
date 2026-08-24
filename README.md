@@ -1,6 +1,6 @@
 # Olive Trading Platform
 
-Olive is a risk-first trading platform built in acceptance-gated phases. The current Phase 3 implementation securely receives and validates candidate signals, but makes no risk decision and cannot place orders.
+Olive is a risk-first trading platform built in acceptance-gated phases. The current Phase 4 implementation securely receives, validates, and sizes candidate signals, but cannot place orders.
 
 ## Phase 0 capabilities
 
@@ -76,6 +76,17 @@ The command builds a temporary local stack, migrates and seeds PostgreSQL, sends
 - Persisted deterministic validation outcomes and `RISK_REVIEW` handoff
 
 See `docs/phase-3.md` for the complete Phase 3 contract.
+
+## Phase 4 capabilities
+
+- Decimal stop-based risk sizing and lot-size rounding
+- `APPROVED`, `APPROVED_WITH_REDUCED_SIZE`, and `REJECTED` outcomes
+- Base/maximum trade-risk, notional, leverage, margin, instrument, and multiplier caps
+- Deterministic binding-constraint explanations
+- Version-bound risk policies and immutable decision evidence
+- Neutral placeholders for later roadmap multipliers without implementing them prematurely
+
+See `docs/phase-4.md` for the complete Phase 4 contract.
 
 ## Acceptance automation
 
