@@ -9,9 +9,12 @@ from sqlalchemy.orm import joinedload
 
 from olive.domain.models import VenueInstrument
 from olive.gateway.models import SignalIntakeRecord, SignalIntakeStatus
+from olive.risk.correlation import CorrelationRiskEngine
 from olive.risk.engine import SingleTradeRiskEngine
 from olive.risk.hierarchy import HierarchicalExposureEngine
 from olive.risk.models import (
+    CorrelationRiskDecisionRecord,
+    CorrelationRiskPolicyRecord,
     HierarchicalExposureLimitRecord,
     HierarchicalRiskDecisionRecord,
     PortfolioRiskDecisionRecord,
@@ -21,6 +24,8 @@ from olive.risk.models import (
 )
 from olive.risk.portfolio import PortfolioRiskEngine
 from olive.risk.schemas import (
+    CorrelationRiskInput,
+    CorrelationRiskPolicy,
     ExposureDimension,
     ExposureMetric,
     HierarchicalExposureLimit,
@@ -219,6 +224,57 @@ class HierarchicalRiskService:
             approved_notional=decision.approved_notional,
             binding_limit=decision.binding_limit,
             evaluations=decision.evaluations,
+            reasons=decision.reasons,
+        )
+        self._session.add(result)
+        await self._session.commit()
+        return result
+
+
+class CorrelationRiskService:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def evaluate(
+        self,
+        hierarchical_risk_decision_id: uuid.UUID,
+        request: CorrelationRiskInput,
+        *,
+        configuration_version: str,
+    ) -> CorrelationRiskDecisionRecord:
+        hierarchy_decision = await self._session.get(
+            HierarchicalRiskDecisionRecord, hierarchical_risk_decision_id
+        )
+        if hierarchy_decision is None:
+            raise RiskEvaluationError("hierarchical risk decision was not found")
+        policy_record = await self._session.scalar(
+            select(CorrelationRiskPolicyRecord).where(
+                CorrelationRiskPolicyRecord.configuration_version == configuration_version
+            )
+        )
+        if policy_record is None:
+            raise RiskEvaluationError("correlation risk policy is not configured")
+        decision = CorrelationRiskEngine().evaluate(
+            request,
+            CorrelationRiskPolicy(
+                lookback_observations=policy_record.lookback_observations,
+                minimum_observations=policy_record.minimum_observations,
+                cluster_threshold=policy_record.cluster_threshold,
+                max_correlated_positions=policy_record.max_correlated_positions,
+                max_cluster_stop_risk=policy_record.max_cluster_stop_risk,
+            ),
+        )
+        result = CorrelationRiskDecisionRecord(
+            hierarchical_risk_decision_id=hierarchy_decision.id,
+            correlation_risk_policy_id=policy_record.id,
+            decision=decision.decision.value,
+            approved_fraction=decision.approved_fraction,
+            approved_notional=decision.approved_notional,
+            proposed_cluster=list(decision.proposed_cluster),
+            correlations={key: str(value) for key, value in decision.correlations.items()},
+            cluster_position_count=decision.current_cluster_positions,
+            current_cluster_stop_risk=decision.current_cluster_stop_risk,
+            projected_cluster_stop_risk=decision.projected_cluster_stop_risk,
             reasons=decision.reasons,
         )
         self._session.add(result)

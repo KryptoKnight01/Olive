@@ -164,3 +164,46 @@ class HierarchicalRiskDecision(BaseModel):
     binding_limit: str | None
     evaluations: list[dict[str, str]]
     reasons: list[str]
+
+
+class CorrelatedPosition(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    instrument_key: str = Field(min_length=1, max_length=200)
+    open_stop_risk: Decimal = Field(ge=0)
+
+
+class CorrelationRiskInput(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    signal_id: uuid.UUID
+    proposed_instrument_key: str = Field(min_length=1, max_length=200)
+    proposed_notional: Decimal = Field(gt=0)
+    proposed_stop_risk: Decimal = Field(gt=0)
+    price_history: dict[str, tuple[Decimal, ...]]
+    positions: tuple[CorrelatedPosition, ...] = ()
+
+
+class CorrelationRiskPolicy(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    lookback_observations: int = Field(ge=3)
+    minimum_observations: int = Field(ge=3)
+    cluster_threshold: Decimal = Field(gt=0, le=1)
+    max_correlated_positions: int = Field(gt=0)
+    max_cluster_stop_risk: Decimal = Field(gt=0)
+
+
+class CorrelationRiskDecision(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    decision: RiskDecisionOutcome
+    signal_id: uuid.UUID
+    approved_fraction: Decimal = Field(ge=0, le=1)
+    approved_notional: Decimal = Field(ge=0)
+    proposed_cluster: tuple[str, ...]
+    correlations: dict[str, Decimal]
+    current_cluster_positions: int
+    current_cluster_stop_risk: Decimal
+    projected_cluster_stop_risk: Decimal
+    reasons: list[str]

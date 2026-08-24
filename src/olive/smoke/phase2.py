@@ -30,19 +30,23 @@ from olive.domain.models import (
 )
 from olive.gateway.models import SignalIntakeRecord, SignalIntakeStatus
 from olive.risk.models import (
+    CorrelationRiskPolicyRecord,
     HierarchicalExposureLimitRecord,
+    HierarchicalRiskDecisionRecord,
     PortfolioRiskDecisionRecord,
     PortfolioRiskPolicyRecord,
     SingleTradeRiskPolicyRecord,
     TradeRiskDecisionRecord,
 )
 from olive.risk.schemas import (
+    CorrelationRiskInput,
     HierarchicalRiskInput,
     PortfolioRiskInput,
     PositionSide,
     RiskDecisionOutcome,
 )
 from olive.risk.service import (
+    CorrelationRiskService,
     HierarchicalRiskService,
     PortfolioRiskService,
     SingleTradeRiskService,
@@ -151,6 +155,16 @@ async def seed() -> None:
                     metric="GROSS_NOTIONAL",
                     maximum=Decimal("100000"),
                     enabled=True,
+                )
+            )
+            session.add(
+                CorrelationRiskPolicyRecord(
+                    configuration_version="smoke-1",
+                    lookback_observations=6,
+                    minimum_observations=5,
+                    cluster_threshold=Decimal("0.8"),
+                    max_correlated_positions=2,
+                    max_cluster_stop_risk=Decimal("3000"),
                 )
             )
             await session.commit()
@@ -337,10 +351,50 @@ async def hierarchy() -> None:
         await engine.dispose()
 
 
+async def correlation() -> None:
+    settings = get_settings()
+    engine = create_database_engine(settings.database_url)
+    sessions = create_session_factory(engine)
+    try:
+        async with sessions() as session:
+            hierarchy_decision = await session.scalar(
+                select(HierarchicalRiskDecisionRecord).order_by(
+                    desc(HierarchicalRiskDecisionRecord.created_at)
+                )
+            )
+            if hierarchy_decision is None:
+                raise RuntimeError("no Phase 6 hierarchical decision is available")
+            decision = await CorrelationRiskService(session).evaluate(
+                hierarchy_decision.id,
+                CorrelationRiskInput.model_validate(
+                    {
+                        "signal_id": uuid.uuid4(),
+                        "proposed_instrument_key": "BTC",
+                        "proposed_notional": "65000",
+                        "proposed_stop_risk": "1000",
+                        "price_history": {
+                            "BTC": ["100", "101", "103", "102", "104", "107"],
+                            "ETH": ["200", "202", "206", "204", "208", "214"],
+                        },
+                    }
+                ),
+                configuration_version="smoke-1",
+            )
+            if decision.outcome is not RiskDecisionOutcome.APPROVED:
+                raise RuntimeError(f"unexpected Phase 7 decision: {decision.decision}")
+            print(
+                "PASS Phase 7 correlation-aware decision: "
+                f"cluster={decision.proposed_cluster}"
+            )
+    finally:
+        await engine.dispose()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Olive Phase 2 live smoke test")
     parser.add_argument(
-        "command", choices=("seed", "send", "risk", "portfolio", "hierarchy")
+        "command",
+        choices=("seed", "send", "risk", "portfolio", "hierarchy", "correlation"),
     )
     parser.add_argument(
         "--url",
@@ -357,6 +411,8 @@ def main() -> int:
             asyncio.run(portfolio())
         elif args.command == "hierarchy":
             asyncio.run(hierarchy())
+        elif args.command == "correlation":
+            asyncio.run(correlation())
         else:
             send(args.url)
     except Exception as exc:
