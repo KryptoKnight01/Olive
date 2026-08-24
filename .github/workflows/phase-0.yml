@@ -48,6 +48,7 @@ jobs:
         run: |
           docker compose run --rm api python -m olive.smoke.phase2 seed
           docker compose run --rm api python -m olive.smoke.phase2 send
+          docker compose run --rm api python -m olive.smoke.phase2 risk
       - name: Capture diagnostics
         if: failure()
         run: docker compose logs --no-color

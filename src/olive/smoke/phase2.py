@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import desc, select
 
 from olive.config import get_settings
 from olive.db import create_database_engine, create_session_factory
@@ -28,6 +28,10 @@ from olive.domain.models import (
     Venue,
     VenueInstrument,
 )
+from olive.gateway.models import SignalIntakeRecord, SignalIntakeStatus
+from olive.risk.models import SingleTradeRiskPolicyRecord
+from olive.risk.schemas import RiskDecisionOutcome
+from olive.risk.service import SingleTradeRiskService
 from olive.validation.models import SignalValidationPolicy
 
 
@@ -97,6 +101,18 @@ async def seed() -> None:
                     max_entry_deviation_pct=Decimal("1.0"),
                     min_expected_rr=Decimal("1.5"),
                     min_setup_score=Decimal("70"),
+                )
+            )
+            session.add(
+                SingleTradeRiskPolicyRecord(
+                    strategy_version_id=version.id,
+                    base_risk_pct=Decimal("1"),
+                    max_risk_pct=Decimal("1.5"),
+                    max_notional=Decimal("100000"),
+                    max_leverage=Decimal("3"),
+                    max_margin=Decimal("50000"),
+                    min_stop_distance_pct=Decimal("0.25"),
+                    max_stop_distance_pct=Decimal("10"),
                 )
             )
             await session.commit()
@@ -190,9 +206,35 @@ def send(url: str) -> None:
     print("PASS Phase 3 stop/target validation rejected an illogical signal")
 
 
+async def risk() -> None:
+    settings = get_settings()
+    engine = create_database_engine(settings.database_url)
+    sessions = create_session_factory(engine)
+    try:
+        async with sessions() as session:
+            intake = await session.scalar(
+                select(SignalIntakeRecord)
+                .where(SignalIntakeRecord.status == SignalIntakeStatus.RISK_REVIEW)
+                .order_by(desc(SignalIntakeRecord.created_at))
+            )
+            if intake is None:
+                raise RuntimeError("no validated signal is available for risk review")
+            decision = await SingleTradeRiskService(session).evaluate(
+                intake.id,
+                equity=Decimal("100000"),
+                available_margin=Decimal("50000"),
+                requested_risk_pct=Decimal("1"),
+            )
+            if decision.outcome is not RiskDecisionOutcome.APPROVED:
+                raise RuntimeError(f"unexpected Phase 4 decision: {decision.decision}")
+            print(f"PASS Phase 4 stop-based risk decision: size={decision.position_size}")
+    finally:
+        await engine.dispose()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Olive Phase 2 live smoke test")
-    parser.add_argument("command", choices=("seed", "send"))
+    parser.add_argument("command", choices=("seed", "send", "risk"))
     parser.add_argument(
         "--url",
         default="http://api:8000/api/v1/signals/tradingview",
@@ -202,6 +244,8 @@ def main() -> int:
     try:
         if args.command == "seed":
             asyncio.run(seed())
+        elif args.command == "risk":
+            asyncio.run(risk())
         else:
             send(args.url)
     except Exception as exc:

@@ -11,6 +11,7 @@ from olive.config import get_settings
 from olive.db import Base
 from olive.domain import models  # noqa: F401
 from olive.gateway import models as gateway_models  # noqa: F401
+from olive.risk import models as risk_models  # noqa: F401
 from olive.validation import models as validation_models  # noqa: F401
 
 config = context.config
