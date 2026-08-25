@@ -7,6 +7,10 @@ Phases 28–32 add disarmed-by-default limited-live authorization, live/paper de
 multi-venue exposure consolidation, multi-strategy portfolio arbitration, and allowlisted
 multi-asset production controls.
 
+Phases 33–37 add separated capital-pool accounting, sliced execution plans, advanced portfolio
+analytics, a deterministic native strategy engine, and a parity-gated path away from TradingView
+as production-critical infrastructure.
+
 Olive is a risk-first trading platform built in acceptance-gated phases. The current Phase 4 implementation securely receives, validates, and sizes candidate signals, but cannot place orders.
 
 ## Phase 0 capabilities

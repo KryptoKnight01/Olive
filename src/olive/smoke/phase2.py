@@ -28,6 +28,16 @@ from olive.domain.models import (
     Venue,
     VenueInstrument,
 )
+from olive.evolution.engine import EvolutionEngine
+from olive.evolution.schemas import (
+    AuthorityPolicy,
+    CapitalPool,
+    ExecutionRequest,
+    ExecutionStyle,
+    PortfolioAnalyticsInput,
+    SignalAuthority,
+    StrategyBar,
+)
 from olive.execution_risk.models import ExecutionRiskPolicyRecord
 from olive.execution_risk.schemas import ExecutionRiskInput
 from olive.execution_risk.service import ExecutionRiskService
@@ -974,6 +984,64 @@ async def controlled_production() -> None:
     )
 
 
+async def strategy_evolution() -> None:
+    engine = EvolutionEngine()
+    pool = engine.allocate_pool(
+        CapitalPool(
+            pool_key="primary",
+            allocated_capital=Decimal("10000"),
+            reserved_capital=Decimal("2000"),
+            investor_units=Decimal("100"),
+        ),
+        Decimal("9000"),
+    )
+    plan = engine.build_execution_plan(
+        ExecutionRequest(
+            order_id=str(uuid.uuid4()),
+            total_quantity=Decimal("10"),
+            duration_minutes=10,
+            slices=5,
+            reference_price=Decimal("100"),
+            max_participation_pct=Decimal("5"),
+        ),
+        ExecutionStyle.TWAP,
+    )
+    analytics = engine.analyze_portfolio(
+        PortfolioAnalyticsInput(
+            portfolio_value=Decimal("1000"),
+            position_values={"BTC": Decimal("600"), "ETH": Decimal("400")},
+            returns={
+                "BTC": (Decimal("-0.1"), Decimal("0.05"), Decimal("-0.02")),
+                "ETH": (Decimal("-0.05"), Decimal("0.02"), Decimal("-0.01")),
+            },
+        )
+    )
+    native = engine.native_signal(
+        "OLC",
+        StrategyBar(close=Decimal("110"), fast_average=Decimal("105"), slow_average=Decimal("100")),
+        "1.0",
+    )
+    parity = engine.check_parity([1, 0, -1], [1, 0, -1], Decimal("99"))
+    authority = engine.decide_authority(
+        AuthorityPolicy(
+            authority=SignalAuthority.NATIVE_PYTHON,
+            minimum_parity_pct=Decimal("99"),
+            observed_parity_pct=parity.parity_pct,
+            review_approved=True,
+        )
+    )
+    if pool.approved_notional != Decimal("8000") or len(plan.slices) != 5:
+        raise RuntimeError("capital-pool or execution planning failed")
+    if analytics.expected_shortfall <= 0 or native.direction != 1:
+        raise RuntimeError("portfolio analytics or native strategy failed")
+    if not parity.passed or not authority.production_authority_granted:
+        raise RuntimeError("native signal parity or authority review failed")
+    print(
+        "PASS Phases 33-37 strategy evolution: pools=SEGREGATED, execution=SLICED, "
+        "analytics=EXPLAINED, native=PARITY_VERIFIED, authority=REVIEWED"
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Olive Phase 2 live smoke test")
     parser.add_argument(
@@ -994,6 +1062,7 @@ def main() -> int:
             "governance-controls",
             "live-readiness",
             "controlled-production",
+            "strategy-evolution",
         ),
     )
     parser.add_argument(
@@ -1031,6 +1100,8 @@ def main() -> int:
             asyncio.run(live_readiness())
         elif args.command == "controlled-production":
             asyncio.run(controlled_production())
+        elif args.command == "strategy-evolution":
+            asyncio.run(strategy_evolution())
         else:
             send(args.url)
     except Exception as exc:
