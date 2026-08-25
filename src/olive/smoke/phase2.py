@@ -46,6 +46,17 @@ from olive.market_data.service import MarketDataService
 from olive.paper.oms import PaperOms
 from olive.paper.pipeline import PaperPipeline
 from olive.paper.sandbox import FirstVenueSandboxConnector
+from olive.production.engine import ControlledProductionEngine
+from olive.production.schemas import (
+    AssetProductionPolicy,
+    ExecutionObservation,
+    LiveCapitalPolicy,
+    LiveOrderRequest,
+    ProductionMode,
+    StrategySignal,
+    VenueExposure,
+    VenueQuote,
+)
 from olive.readiness.engine import LiveReadinessEngine
 from olive.readiness.schemas import (
     EventObservation,
@@ -855,6 +866,114 @@ async def live_readiness() -> None:
     )
 
 
+async def controlled_production() -> None:
+    engine = ControlledProductionEngine()
+    policy = LiveCapitalPolicy(
+        mode=ProductionMode.LIMITED_LIVE,
+        approved_strategy="OLC",
+        approved_instruments=frozenset({"BTCUSDT"}),
+        approved_venue="venue-a",
+        max_order_notional=Decimal("1000"),
+        max_total_exposure=Decimal("5000"),
+        max_leverage=Decimal("1.5"),
+        readiness_approved=True,
+        operator_armed=True,
+    )
+    live = engine.authorize_live_order(
+        LiveOrderRequest(
+            signal_id=str(uuid.uuid4()),
+            strategy_key="OLC",
+            instrument="BTCUSDT",
+            venue="venue-a",
+            requested_notional=Decimal("1500"),
+            projected_total_exposure=Decimal("3000"),
+            projected_leverage=Decimal("1"),
+        ),
+        policy,
+    )
+    deviation = engine.analyze_deviation(
+        ExecutionObservation(
+            signal_id=live.signal_id,
+            paper_delay_ms=100,
+            live_delay_ms=500,
+            paper_fill_price=Decimal("100"),
+            live_fill_price=Decimal("102"),
+            paper_fee=Decimal("1"),
+            live_fee=Decimal("1.5"),
+            paper_pnl=Decimal("10"),
+            live_pnl=Decimal("5"),
+        ),
+        200,
+        Decimal("1"),
+        Decimal("2"),
+    )
+    venue = engine.select_venue(
+        [
+            VenueQuote(
+                venue="venue-a",
+                price=Decimal("100"),
+                available_notional=Decimal("1000"),
+                fee_pct=Decimal("0.1"),
+            ),
+            VenueQuote(
+                venue="venue-b",
+                price=Decimal("99"),
+                available_notional=Decimal("800"),
+                fee_pct=Decimal("0.1"),
+            ),
+        ],
+        Decimal("1000"),
+        "BUY",
+    )
+    exposure = engine.consolidated_exposure(
+        [
+            VenueExposure(venue="venue-a", gross_exposure=Decimal("2000")),
+            VenueExposure(venue="venue-b", gross_exposure=Decimal("3000")),
+        ]
+    )
+    strategies = engine.resolve_strategies(
+        [
+            StrategySignal(
+                strategy_key="OLC",
+                instrument="BTCUSDT",
+                direction=1,
+                priority=100,
+                requested_risk_pct=Decimal("0.8"),
+            ),
+            StrategySignal(
+                strategy_key="secondary",
+                instrument="BTCUSDT",
+                direction=-1,
+                priority=50,
+                requested_risk_pct=Decimal("0.5"),
+            ),
+        ],
+        Decimal("1"),
+    )
+    asset = engine.check_asset_eligibility(
+        "BTCUSDT",
+        "venue-a",
+        Decimal("1500"),
+        AssetProductionPolicy(
+            asset_class="CRYPTO",
+            approved_instruments=frozenset({"BTCUSDT"}),
+            approved_venues=frozenset({"venue-a"}),
+            max_notional=Decimal("1000"),
+            enabled=True,
+        ),
+    )
+    if not live.route_permitted or live.approved_notional != Decimal("1000"):
+        raise RuntimeError("limited-live capital gate failed")
+    if not deviation.breached or venue.venue != "venue-b" or exposure != Decimal("5000"):
+        raise RuntimeError("deviation or multi-venue control failed")
+    if strategies.total_risk_pct != Decimal("0.8") or not asset.eligible:
+        raise RuntimeError("strategy arbitration or asset eligibility failed")
+    print(
+        "PASS Phases 28-32 controlled production: live=CAPPED, deviation=DETECTED, "
+        "venues=CONSOLIDATED, strategies=ARBITRATED, assets=ALLOWLISTED"
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Olive Phase 2 live smoke test")
     parser.add_argument(
@@ -874,6 +993,7 @@ def main() -> int:
             "paper-pipeline",
             "governance-controls",
             "live-readiness",
+            "controlled-production",
         ),
     )
     parser.add_argument(
@@ -909,6 +1029,8 @@ def main() -> int:
             asyncio.run(governance_controls())
         elif args.command == "live-readiness":
             asyncio.run(live_readiness())
+        elif args.command == "controlled-production":
+            asyncio.run(controlled_production())
         else:
             send(args.url)
     except Exception as exc:
