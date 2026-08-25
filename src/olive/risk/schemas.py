@@ -255,3 +255,54 @@ class DynamicRiskDecision(BaseModel):
     final_risk_pct: Decimal
     caps: dict[str, Decimal]
     reasons: list[str]
+
+
+class ProtectionAction(StrEnum):
+    ALLOW = "ALLOW"
+    THROTTLE = "THROTTLE"
+    HALT_NEW_RISK = "HALT_NEW_RISK"
+
+
+class LossProtectionInput(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    signal_id: uuid.UUID
+    equity: Decimal = Field(gt=0)
+    peak_equity: Decimal = Field(gt=0)
+    strategy_equity: Decimal = Field(gt=0)
+    strategy_peak_equity: Decimal = Field(gt=0)
+    daily_pnl: Decimal
+    weekly_pnl: Decimal
+    monthly_pnl: Decimal
+    peak_daily_pnl: Decimal = Field(ge=0)
+    consecutive_losses: int = Field(ge=0)
+
+
+class LossProtectionPolicy(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    max_daily_loss_pct: Decimal = Field(gt=0)
+    max_weekly_loss_pct: Decimal = Field(gt=0)
+    max_monthly_loss_pct: Decimal = Field(gt=0)
+    portfolio_drawdown_throttle_pct: Decimal = Field(gt=0)
+    portfolio_drawdown_halt_pct: Decimal = Field(gt=0)
+    strategy_drawdown_throttle_pct: Decimal = Field(gt=0)
+    strategy_drawdown_halt_pct: Decimal = Field(gt=0)
+    consecutive_loss_throttle: int = Field(gt=0)
+    consecutive_loss_halt: int = Field(gt=0)
+    throttled_multiplier: Decimal = Field(gt=0, lt=1)
+    profit_giveback_trigger_pct: Decimal = Field(gt=0, le=100)
+    minimum_profit_for_giveback: Decimal = Field(gt=0)
+    profit_giveback_multiplier: Decimal = Field(ge=0, lt=1)
+
+
+class LossProtectionDecision(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    signal_id: uuid.UUID
+    action: ProtectionAction
+    protection_multiplier: Decimal = Field(ge=0, le=1)
+    metrics: dict[str, Decimal | int]
+    thresholds: dict[str, Decimal | int]
+    binding_controls: list[str]
+    reasons: list[str]

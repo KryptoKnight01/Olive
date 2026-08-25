@@ -123,6 +123,15 @@ See `docs/phase-7.md` for the complete Phase 7 contract.
 
 See `docs/phase-8.md` for the complete Phase 8 contract.
 
+## Phase 9 capabilities
+
+- Daily, weekly, and monthly loss protection
+- Portfolio and strategy drawdown throttle/halt controls
+- Consecutive-loss and profit-giveback protection
+- Most-restrictive-control decisions with reconstructable evidence
+
+See `docs/phase-9.md` for the complete Phase 9 contract.
+
 ## Acceptance automation
 
 The `Olive acceptance` workflow runs unit/static checks, validates the Alembic chain, builds the complete Compose stack, applies migrations, checks schema drift, and probes both health contracts. The next phase must not begin until this workflow passes in a Docker-capable runner.

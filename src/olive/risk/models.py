@@ -219,3 +219,33 @@ class DynamicRiskDecisionRecord(UuidMixin, TimestampMixin, Base):
     final_risk_pct: Mapped[Decimal] = mapped_column(Numeric(20, 12), nullable=False)
     caps: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False)
     reasons: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+
+
+class LossProtectionPolicyRecord(UuidMixin, TimestampMixin, Base):
+    __tablename__ = "loss_protection_policies"
+    __table_args__ = (
+        UniqueConstraint("configuration_version", name="uq_loss_protection_policy_version"),
+    )
+
+    configuration_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    parameters: Mapped[dict[str, str | int]] = mapped_column(JSON, nullable=False)
+
+
+class LossProtectionDecisionRecord(UuidMixin, TimestampMixin, Base):
+    __tablename__ = "loss_protection_decisions"
+    __table_args__ = (
+        UniqueConstraint("dynamic_risk_decision_id", name="uq_loss_decision_dynamic"),
+    )
+
+    dynamic_risk_decision_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("dynamic_risk_decisions.id", ondelete="RESTRICT"), nullable=False
+    )
+    loss_protection_policy_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("loss_protection_policies.id", ondelete="RESTRICT"), nullable=False
+    )
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    protection_multiplier: Mapped[Decimal] = mapped_column(Numeric(18, 12), nullable=False)
+    metrics: Mapped[dict[str, str | int]] = mapped_column(JSON, nullable=False)
+    thresholds: Mapped[dict[str, str | int]] = mapped_column(JSON, nullable=False)
+    binding_controls: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    reasons: Mapped[list[str]] = mapped_column(JSON, nullable=False)

@@ -40,7 +40,10 @@ try {
     docker compose run --rm api python -m olive.smoke.phase2 dynamic
     if ($LASTEXITCODE -ne 0) { throw "Phase 8 dynamic-risk verification failed." }
 
-    Write-Host "Phase 2/3/4/5/6/7/8 end-to-end smoke test passed." -ForegroundColor Green
+    docker compose run --rm api python -m olive.smoke.phase2 protection
+    if ($LASTEXITCODE -ne 0) { throw "Phase 9 loss-protection verification failed." }
+
+    Write-Host "Phase 2/3/4/5/6/7/8/9 end-to-end smoke test passed." -ForegroundColor Green
 }
 finally {
     docker compose down --volumes
