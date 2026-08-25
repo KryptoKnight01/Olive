@@ -160,6 +160,16 @@ See `docs/phase-11.md` for the complete Phase 11 contract.
 
 See `docs/phase-12.md` for the complete Phase 12 contract.
 
+## Phases 13-17 capabilities
+
+- Idempotent paper orders, partial fills, cancellations, positions, fees, and realized PnL
+- Stop/target coverage, orphan-order, and protection-quantity verification
+- Internal-versus-venue order, position, and balance reconciliation
+- One deterministic sandbox connector with outage and rate-limit failure behavior
+- Complete paper entry, fill, protection, reconciliation, exit, and analytics pipeline
+
+See `docs/phase-13.md` through `docs/phase-17.md` for the individual contracts.
+
 ## Acceptance automation
 
 The `Olive acceptance` workflow runs unit/static checks, validates the Alembic chain, builds the complete Compose stack, applies migrations, checks schema drift, and probes both health contracts. The next phase must not begin until this workflow passes in a Docker-capable runner.

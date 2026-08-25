@@ -35,6 +35,9 @@ from olive.gateway.models import SignalIntakeRecord, SignalIntakeStatus
 from olive.market_data.models import MarketQuoteRecord
 from olive.market_data.schemas import MarketDataPolicy, QuoteInput
 from olive.market_data.service import MarketDataService
+from olive.paper.oms import PaperOms
+from olive.paper.pipeline import PaperPipeline
+from olive.paper.sandbox import FirstVenueSandboxConnector
 from olive.risk.models import (
     CorrelationRiskDecisionRecord,
     CorrelationRiskPolicyRecord,
@@ -717,6 +720,25 @@ async def execution_risk() -> None:
         await engine.dispose()
 
 
+async def paper_pipeline() -> None:
+    oms = PaperOms(fee_rate=Decimal("0.001"))
+    venue = FirstVenueSandboxConnector(oms)
+    result = PaperPipeline(oms, venue).execute_round_trip(
+        signal_id=uuid.uuid4(),
+        instrument_id=uuid.uuid4(),
+        quantity=Decimal("2"),
+        entry_price=Decimal("100"),
+        exit_price=Decimal("110"),
+    )
+    if result.realized_pnl != Decimal("19.58") or not result.reconciled:
+        raise RuntimeError(f"unexpected Phase 13-17 pipeline result: {result}")
+    print(
+        "PASS Phases 13-17 paper pipeline: "
+        f"status={result.order_status}, protection={result.protection_status}, "
+        f"pnl={result.realized_pnl}"
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Olive Phase 2 live smoke test")
     parser.add_argument(
@@ -727,6 +749,7 @@ def main() -> int:
             "regime",
             "market-data",
             "execution-risk",
+            "paper-pipeline",
         ),
     )
     parser.add_argument(
@@ -756,6 +779,8 @@ def main() -> int:
             asyncio.run(market_data())
         elif args.command == "execution-risk":
             asyncio.run(execution_risk())
+        elif args.command == "paper-pipeline":
+            asyncio.run(paper_pipeline())
         else:
             send(args.url)
     except Exception as exc:
