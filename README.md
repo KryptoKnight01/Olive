@@ -3,6 +3,10 @@
 Phases 23–27 add strategy health monitoring, portfolio stress testing, event-risk controls,
 non-routing shadow-live simulation, and a mandatory evidence-based live-readiness review.
 
+Phases 28–32 add disarmed-by-default limited-live authorization, live/paper deviation analysis,
+multi-venue exposure consolidation, multi-strategy portfolio arbitration, and allowlisted
+multi-asset production controls.
+
 Olive is a risk-first trading platform built in acceptance-gated phases. The current Phase 4 implementation securely receives, validates, and sizes candidate signals, but cannot place orders.
 
 ## Phase 0 capabilities
