@@ -36,7 +36,9 @@ from olive.risk.models import (
     DynamicRiskPolicyRecord,
     HierarchicalExposureLimitRecord,
     HierarchicalRiskDecisionRecord,
+    LossProtectionDecisionRecord,
     LossProtectionPolicyRecord,
+    PortfolioRegimePolicyRecord,
     PortfolioRiskDecisionRecord,
     PortfolioRiskPolicyRecord,
     SingleTradeRiskPolicyRecord,
@@ -47,6 +49,7 @@ from olive.risk.schemas import (
     DynamicRiskInput,
     HierarchicalRiskInput,
     LossProtectionInput,
+    PortfolioRegimeInput,
     PortfolioRiskInput,
     PositionSide,
     RiskDecisionOutcome,
@@ -56,6 +59,7 @@ from olive.risk.service import (
     DynamicRiskService,
     HierarchicalRiskService,
     LossProtectionService,
+    PortfolioRegimeService,
     PortfolioRiskService,
     SingleTradeRiskService,
 )
@@ -209,6 +213,64 @@ async def seed() -> None:
                         "profit_giveback_trigger_pct": "50",
                         "minimum_profit_for_giveback": "1000",
                         "profit_giveback_multiplier": "0.25",
+                    },
+                )
+            )
+            regime_thresholds = {
+                name: {
+                    "calm_maximum": "10",
+                    "elevated_minimum": "20",
+                    "high_volatility_minimum": "30",
+                    "crisis_minimum": "40",
+                }
+                for name in (
+                    "realized_volatility_pct",
+                    "liquidity_stress_score",
+                    "market_stress_score",
+                )
+            }
+            regime_thresholds["average_absolute_correlation"] = {
+                "calm_maximum": "0.2",
+                "elevated_minimum": "0.5",
+                "high_volatility_minimum": "0.7",
+                "crisis_minimum": "0.9",
+            }
+            regime_thresholds["portfolio_drawdown_pct"] = {
+                "calm_maximum": "2",
+                "elevated_minimum": "5",
+                "high_volatility_minimum": "8",
+                "crisis_minimum": "12",
+            }
+            session.add(
+                PortfolioRegimePolicyRecord(
+                    configuration_version="smoke-1",
+                    thresholds=regime_thresholds,
+                    controls={
+                        "CALM": {
+                            "risk_multiplier": "1",
+                            "max_leverage": "3",
+                            "max_new_positions": 10,
+                        },
+                        "NORMAL": {
+                            "risk_multiplier": "1",
+                            "max_leverage": "3",
+                            "max_new_positions": 8,
+                        },
+                        "ELEVATED": {
+                            "risk_multiplier": "0.75",
+                            "max_leverage": "2",
+                            "max_new_positions": 4,
+                        },
+                        "HIGH_VOLATILITY": {
+                            "risk_multiplier": "0.5",
+                            "max_leverage": "1.5",
+                            "max_new_positions": 2,
+                        },
+                        "CRISIS": {
+                            "risk_multiplier": "0",
+                            "max_leverage": "0",
+                            "max_new_positions": 0,
+                        },
                     },
                 )
             )
@@ -512,6 +574,43 @@ async def protection() -> None:
         await engine.dispose()
 
 
+async def regime() -> None:
+    settings = get_settings()
+    engine = create_database_engine(settings.database_url)
+    sessions = create_session_factory(engine)
+    try:
+        async with sessions() as session:
+            protection_decision = await session.scalar(
+                select(LossProtectionDecisionRecord).order_by(
+                    desc(LossProtectionDecisionRecord.created_at)
+                )
+            )
+            if protection_decision is None:
+                raise RuntimeError("no Phase 9 loss-protection decision is available")
+            decision = await PortfolioRegimeService(session).evaluate(
+                protection_decision.id,
+                PortfolioRegimeInput(
+                    observation_id=uuid.uuid4(),
+                    realized_volatility_pct=Decimal("22"),
+                    average_absolute_correlation=Decimal("0.3"),
+                    portfolio_drawdown_pct=Decimal("2"),
+                    liquidity_stress_score=Decimal("5"),
+                    market_stress_score=Decimal("5"),
+                ),
+                configuration_version="smoke-1",
+            )
+            if decision.regime != "ELEVATED":
+                raise RuntimeError(f"unexpected Phase 10 regime: {decision.regime}")
+            if decision.controls["risk_multiplier"] != "0.75":
+                raise RuntimeError(f"unexpected Phase 10 controls: {decision.controls}")
+            print(
+                "PASS Phase 10 portfolio-regime decision: "
+                f"regime={decision.regime}, controls={decision.controls}"
+            )
+    finally:
+        await engine.dispose()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Olive Phase 2 live smoke test")
     parser.add_argument(
@@ -519,6 +618,7 @@ def main() -> int:
         choices=(
             "seed", "send", "risk", "portfolio", "hierarchy", "correlation", "dynamic",
             "protection",
+            "regime",
         ),
     )
     parser.add_argument(
@@ -542,6 +642,8 @@ def main() -> int:
             asyncio.run(dynamic())
         elif args.command == "protection":
             asyncio.run(protection())
+        elif args.command == "regime":
+            asyncio.run(regime())
         else:
             send(args.url)
     except Exception as exc:

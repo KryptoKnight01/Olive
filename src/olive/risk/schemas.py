@@ -306,3 +306,57 @@ class LossProtectionDecision(BaseModel):
     thresholds: dict[str, Decimal | int]
     binding_controls: list[str]
     reasons: list[str]
+
+
+class PortfolioRegime(StrEnum):
+    CALM = "CALM"
+    NORMAL = "NORMAL"
+    ELEVATED = "ELEVATED"
+    HIGH_VOLATILITY = "HIGH_VOLATILITY"
+    CRISIS = "CRISIS"
+
+
+class RegimeThresholds(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    calm_maximum: Decimal = Field(ge=0)
+    elevated_minimum: Decimal = Field(ge=0)
+    high_volatility_minimum: Decimal = Field(ge=0)
+    crisis_minimum: Decimal = Field(ge=0)
+
+
+class RegimeControls(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    risk_multiplier: Decimal = Field(ge=0, le=1)
+    max_leverage: Decimal = Field(ge=0)
+    max_new_positions: int = Field(ge=0)
+
+
+class PortfolioRegimeInput(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    observation_id: uuid.UUID
+    realized_volatility_pct: Decimal = Field(ge=0)
+    average_absolute_correlation: Decimal = Field(ge=0, le=1)
+    portfolio_drawdown_pct: Decimal = Field(ge=0)
+    liquidity_stress_score: Decimal = Field(ge=0, le=100)
+    market_stress_score: Decimal = Field(ge=0, le=100)
+
+
+class PortfolioRegimePolicy(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    thresholds: dict[str, RegimeThresholds]
+    controls: dict[PortfolioRegime, RegimeControls]
+
+
+class PortfolioRegimeDecision(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    observation_id: uuid.UUID
+    regime: PortfolioRegime
+    metrics: dict[str, Decimal]
+    metric_regimes: dict[str, PortfolioRegime]
+    controls: RegimeControls
+    reasons: list[str]

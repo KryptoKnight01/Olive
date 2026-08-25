@@ -132,6 +132,15 @@ See `docs/phase-8.md` for the complete Phase 8 contract.
 
 See `docs/phase-9.md` for the complete Phase 9 contract.
 
+## Phase 10 capabilities
+
+- Transparent five-state portfolio regime classification
+- Independent volatility, correlation, drawdown, liquidity, and market-stress severities
+- Conservative highest-severity selection
+- Regime-specific risk, leverage, and new-position controls
+
+See `docs/phase-10.md` for the complete Phase 10 contract.
+
 ## Acceptance automation
 
 The `Olive acceptance` workflow runs unit/static checks, validates the Alembic chain, builds the complete Compose stack, applies migrations, checks schema drift, and probes both health contracts. The next phase must not begin until this workflow passes in a Docker-capable runner.

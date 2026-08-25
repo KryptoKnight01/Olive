@@ -249,3 +249,34 @@ class LossProtectionDecisionRecord(UuidMixin, TimestampMixin, Base):
     thresholds: Mapped[dict[str, str | int]] = mapped_column(JSON, nullable=False)
     binding_controls: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     reasons: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+
+
+class PortfolioRegimePolicyRecord(UuidMixin, TimestampMixin, Base):
+    __tablename__ = "portfolio_regime_policies"
+    __table_args__ = (
+        UniqueConstraint("configuration_version", name="uq_regime_policy_version"),
+    )
+
+    configuration_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    thresholds: Mapped[dict[str, dict[str, str]]] = mapped_column(JSON, nullable=False)
+    controls: Mapped[dict[str, dict[str, str | int]]] = mapped_column(JSON, nullable=False)
+
+
+class PortfolioRegimeDecisionRecord(UuidMixin, TimestampMixin, Base):
+    __tablename__ = "portfolio_regime_decisions"
+    __table_args__ = (
+        UniqueConstraint("loss_protection_decision_id", name="uq_regime_decision_protection"),
+    )
+
+    loss_protection_decision_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("loss_protection_decisions.id", ondelete="RESTRICT"), nullable=False
+    )
+    portfolio_regime_policy_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("portfolio_regime_policies.id", ondelete="RESTRICT"), nullable=False
+    )
+    observation_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    regime: Mapped[str] = mapped_column(String(32), nullable=False)
+    metrics: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False)
+    metric_regimes: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False)
+    controls: Mapped[dict[str, str | int]] = mapped_column(JSON, nullable=False)
+    reasons: Mapped[list[str]] = mapped_column(JSON, nullable=False)
