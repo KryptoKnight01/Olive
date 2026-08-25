@@ -32,9 +32,11 @@ from olive.gateway.models import SignalIntakeRecord, SignalIntakeStatus
 from olive.risk.models import (
     CorrelationRiskDecisionRecord,
     CorrelationRiskPolicyRecord,
+    DynamicRiskDecisionRecord,
     DynamicRiskPolicyRecord,
     HierarchicalExposureLimitRecord,
     HierarchicalRiskDecisionRecord,
+    LossProtectionPolicyRecord,
     PortfolioRiskDecisionRecord,
     PortfolioRiskPolicyRecord,
     SingleTradeRiskPolicyRecord,
@@ -44,6 +46,7 @@ from olive.risk.schemas import (
     CorrelationRiskInput,
     DynamicRiskInput,
     HierarchicalRiskInput,
+    LossProtectionInput,
     PortfolioRiskInput,
     PositionSide,
     RiskDecisionOutcome,
@@ -52,6 +55,7 @@ from olive.risk.service import (
     CorrelationRiskService,
     DynamicRiskService,
     HierarchicalRiskService,
+    LossProtectionService,
     PortfolioRiskService,
     SingleTradeRiskService,
 )
@@ -186,6 +190,26 @@ async def seed() -> None:
             session.add(
                 DynamicRiskPolicyRecord(
                     configuration_version="smoke-1", bounds=neutral_bounds
+                )
+            )
+            session.add(
+                LossProtectionPolicyRecord(
+                    configuration_version="smoke-1",
+                    parameters={
+                        "max_daily_loss_pct": "2",
+                        "max_weekly_loss_pct": "5",
+                        "max_monthly_loss_pct": "10",
+                        "portfolio_drawdown_throttle_pct": "5",
+                        "portfolio_drawdown_halt_pct": "10",
+                        "strategy_drawdown_throttle_pct": "7",
+                        "strategy_drawdown_halt_pct": "12",
+                        "consecutive_loss_throttle": 3,
+                        "consecutive_loss_halt": 5,
+                        "throttled_multiplier": "0.5",
+                        "profit_giveback_trigger_pct": "50",
+                        "minimum_profit_for_giveback": "1000",
+                        "profit_giveback_multiplier": "0.25",
+                    },
                 )
             )
             await session.commit()
@@ -447,12 +471,54 @@ async def dynamic() -> None:
         await engine.dispose()
 
 
+async def protection() -> None:
+    settings = get_settings()
+    engine = create_database_engine(settings.database_url)
+    sessions = create_session_factory(engine)
+    try:
+        async with sessions() as session:
+            dynamic_decision = await session.scalar(
+                select(DynamicRiskDecisionRecord).order_by(
+                    desc(DynamicRiskDecisionRecord.created_at)
+                )
+            )
+            if dynamic_decision is None:
+                raise RuntimeError("no Phase 8 dynamic risk decision is available")
+            decision = await LossProtectionService(session).evaluate(
+                dynamic_decision.id,
+                LossProtectionInput(
+                    signal_id=uuid.uuid4(),
+                    equity=Decimal("94000"),
+                    peak_equity=Decimal("100000"),
+                    strategy_equity=Decimal("50000"),
+                    strategy_peak_equity=Decimal("50000"),
+                    daily_pnl=Decimal("0"),
+                    weekly_pnl=Decimal("0"),
+                    monthly_pnl=Decimal("0"),
+                    peak_daily_pnl=Decimal("0"),
+                    consecutive_losses=0,
+                ),
+                configuration_version="smoke-1",
+            )
+            if decision.protection_multiplier != Decimal("0.5"):
+                raise RuntimeError(
+                    f"unexpected Phase 9 protection: {decision.protection_multiplier}"
+                )
+            print(
+                "PASS Phase 9 loss-protection decision: "
+                f"action={decision.action}, multiplier={decision.protection_multiplier}"
+            )
+    finally:
+        await engine.dispose()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Olive Phase 2 live smoke test")
     parser.add_argument(
         "command",
         choices=(
-            "seed", "send", "risk", "portfolio", "hierarchy", "correlation", "dynamic"
+            "seed", "send", "risk", "portfolio", "hierarchy", "correlation", "dynamic",
+            "protection",
         ),
     )
     parser.add_argument(
@@ -474,6 +540,8 @@ def main() -> int:
             asyncio.run(correlation())
         elif args.command == "dynamic":
             asyncio.run(dynamic())
+        elif args.command == "protection":
+            asyncio.run(protection())
         else:
             send(args.url)
     except Exception as exc:

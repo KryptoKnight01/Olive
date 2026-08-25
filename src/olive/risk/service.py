@@ -19,6 +19,8 @@ from olive.risk.models import (
     DynamicRiskPolicyRecord,
     HierarchicalExposureLimitRecord,
     HierarchicalRiskDecisionRecord,
+    LossProtectionDecisionRecord,
+    LossProtectionPolicyRecord,
     PortfolioRiskDecisionRecord,
     PortfolioRiskPolicyRecord,
     SingleTradeRiskPolicyRecord,
@@ -26,6 +28,7 @@ from olive.risk.models import (
 )
 from olive.risk.multipliers import DynamicRiskMultiplierEngine
 from olive.risk.portfolio import PortfolioRiskEngine
+from olive.risk.protection import LossProtectionEngine
 from olive.risk.schemas import (
     CorrelationRiskInput,
     CorrelationRiskPolicy,
@@ -35,6 +38,8 @@ from olive.risk.schemas import (
     ExposureMetric,
     HierarchicalExposureLimit,
     HierarchicalRiskInput,
+    LossProtectionInput,
+    LossProtectionPolicy,
     PortfolioRiskInput,
     PortfolioRiskPolicy,
     SingleTradeRiskInput,
@@ -329,3 +334,50 @@ class DynamicRiskService:
         self._session.add(result)
         await self._session.commit()
         return result
+
+
+class LossProtectionService:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def evaluate(
+        self,
+        dynamic_risk_decision_id: uuid.UUID,
+        request: LossProtectionInput,
+        *,
+        configuration_version: str,
+    ) -> LossProtectionDecisionRecord:
+        dynamic_decision = await self._session.get(
+            DynamicRiskDecisionRecord, dynamic_risk_decision_id
+        )
+        if dynamic_decision is None:
+            raise RiskEvaluationError("dynamic risk decision was not found")
+        policy_record = await self._session.scalar(
+            select(LossProtectionPolicyRecord).where(
+                LossProtectionPolicyRecord.configuration_version == configuration_version
+            )
+        )
+        if policy_record is None:
+            raise RiskEvaluationError("loss protection policy is not configured")
+        decision = LossProtectionEngine().evaluate(
+            request, LossProtectionPolicy.model_validate(policy_record.parameters)
+        )
+        result = LossProtectionDecisionRecord(
+            dynamic_risk_decision_id=dynamic_decision.id,
+            loss_protection_policy_id=policy_record.id,
+            action=decision.action.value,
+            protection_multiplier=decision.protection_multiplier,
+            metrics=self._json_values(decision.metrics),
+            thresholds=self._json_values(decision.thresholds),
+            binding_controls=decision.binding_controls,
+            reasons=decision.reasons,
+        )
+        self._session.add(result)
+        await self._session.commit()
+        return result
+
+    @staticmethod
+    def _json_values(values: dict[str, Decimal | int]) -> dict[str, str | int]:
+        return {
+            key: value if isinstance(value, int) else str(value) for key, value in values.items()
+        }
