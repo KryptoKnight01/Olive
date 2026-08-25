@@ -46,7 +46,10 @@ try {
     docker compose run --rm api python -m olive.smoke.phase2 regime
     if ($LASTEXITCODE -ne 0) { throw "Phase 10 portfolio-regime verification failed." }
 
-    Write-Host "Phase 2/3/4/5/6/7/8/9/10 end-to-end smoke test passed." -ForegroundColor Green
+    docker compose run --rm api python -m olive.smoke.phase2 market-data
+    if ($LASTEXITCODE -ne 0) { throw "Phase 11 market-data verification failed." }
+
+    Write-Host "Phase 2/3/4/5/6/7/8/9/10/11 end-to-end smoke test passed." -ForegroundColor Green
 }
 finally {
     docker compose down --volumes

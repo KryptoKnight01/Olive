@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from enum import StrEnum
 from functools import lru_cache
 
@@ -37,6 +38,10 @@ class Settings(BaseSettings):
     signal_rate_limit: int = Field(default=60, gt=0, le=10000)
     signal_rate_window_seconds: int = Field(default=60, gt=0, le=3600)
     signal_max_payload_bytes: int = Field(default=65536, ge=1024, le=1048576)
+    market_data_max_age_seconds: int = Field(default=10, gt=0, le=3600)
+    market_data_max_future_skew_seconds: int = Field(default=2, ge=0, le=60)
+    market_data_max_spread_pct: Decimal = Field(default=Decimal("5"), gt=0, le=100)
+    market_data_max_price_jump_pct: Decimal = Field(default=Decimal("20"), gt=0, le=1000)
 
     @model_validator(mode="after")
     def validate_gateway_windows(self) -> Settings:

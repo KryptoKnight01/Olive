@@ -29,6 +29,8 @@ from olive.domain.models import (
     VenueInstrument,
 )
 from olive.gateway.models import SignalIntakeRecord, SignalIntakeStatus
+from olive.market_data.schemas import MarketDataPolicy, QuoteInput
+from olive.market_data.service import MarketDataService
 from olive.risk.models import (
     CorrelationRiskDecisionRecord,
     CorrelationRiskPolicyRecord,
@@ -611,6 +613,53 @@ async def regime() -> None:
         await engine.dispose()
 
 
+async def market_data() -> None:
+    settings = get_settings()
+    engine = create_database_engine(settings.database_url)
+    sessions = create_session_factory(engine)
+    try:
+        async with sessions() as session:
+            instrument = await session.scalar(
+                select(Instrument).where(Instrument.code == "BTC-USD-SPOT")
+            )
+            if instrument is None:
+                raise RuntimeError("Phase 11 smoke instrument is unavailable")
+            now = datetime.now(UTC)
+            service = MarketDataService(
+                session,
+                MarketDataPolicy(
+                    maximum_age_seconds=10,
+                    maximum_future_skew_seconds=2,
+                    maximum_spread_pct=Decimal("2"),
+                    maximum_price_jump_pct=Decimal("10"),
+                ),
+            )
+            decision = await service.ingest_quote(
+                QuoteInput(
+                    instrument_id=instrument.id,
+                    venue_code="COINBASE",
+                    source="phase11-smoke",
+                    source_timestamp=now - timedelta(seconds=1),
+                    received_at=now,
+                    bid=Decimal("99900"),
+                    ask=Decimal("100000"),
+                    last=Decimal("99950"),
+                    volume=Decimal("12"),
+                ),
+                evaluated_at=now,
+            )
+            if decision.status != "VALID":
+                raise RuntimeError(
+                    f"unexpected Phase 11 market-data status: {decision.status}"
+                )
+            print(
+                "PASS Phase 11 normalized market quote: "
+                f"status={decision.status}, mid={decision.mid}, spread={decision.spread}"
+            )
+    finally:
+        await engine.dispose()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Olive Phase 2 live smoke test")
     parser.add_argument(
@@ -619,6 +668,7 @@ def main() -> int:
             "seed", "send", "risk", "portfolio", "hierarchy", "correlation", "dynamic",
             "protection",
             "regime",
+            "market-data",
         ),
     )
     parser.add_argument(
@@ -644,6 +694,8 @@ def main() -> int:
             asyncio.run(protection())
         elif args.command == "regime":
             asyncio.run(regime())
+        elif args.command == "market-data":
+            asyncio.run(market_data())
         else:
             send(args.url)
     except Exception as exc:

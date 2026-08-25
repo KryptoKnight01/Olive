@@ -141,6 +141,16 @@ See `docs/phase-9.md` for the complete Phase 9 contract.
 
 See `docs/phase-10.md` for the complete Phase 10 contract.
 
+## Phase 11 capabilities
+
+- Normalized bid, ask, last, volume, and OHLCV contracts
+- Source and receipt timestamps with explicit timezone requirements
+- Deterministic stale and future-data detection
+- Crossed-market, spread, and price-jump sanity checks
+- Persistent quality status and human-readable reasons for every quote
+
+See `docs/phase-11.md` for the complete Phase 11 contract.
+
 ## Acceptance automation
 
 The `Olive acceptance` workflow runs unit/static checks, validates the Alembic chain, builds the complete Compose stack, applies migrations, checks schema drift, and probes both health contracts. The next phase must not begin until this workflow passes in a Docker-capable runner.
