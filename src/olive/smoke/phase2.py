@@ -28,7 +28,11 @@ from olive.domain.models import (
     Venue,
     VenueInstrument,
 )
+from olive.execution_risk.models import ExecutionRiskPolicyRecord
+from olive.execution_risk.schemas import ExecutionRiskInput
+from olive.execution_risk.service import ExecutionRiskService
 from olive.gateway.models import SignalIntakeRecord, SignalIntakeStatus
+from olive.market_data.models import MarketQuoteRecord
 from olive.market_data.schemas import MarketDataPolicy, QuoteInput
 from olive.market_data.service import MarketDataService
 from olive.risk.models import (
@@ -273,6 +277,20 @@ async def seed() -> None:
                             "max_leverage": "0",
                             "max_new_positions": 0,
                         },
+                    },
+                )
+            )
+            session.add(
+                ExecutionRiskPolicyRecord(
+                    configuration_version="smoke-1",
+                    parameters={
+                        "maximum_spread_pct": "1",
+                        "maximum_slippage_pct": "0.5",
+                        "maximum_adv_participation_pct": "2",
+                        "maximum_book_participation_pct": "20",
+                        "minimum_executable_notional": "100",
+                        "minimum_reduced_fraction": "0.5",
+                        "maximum_slices": 5,
                     },
                 )
             )
@@ -660,6 +678,45 @@ async def market_data() -> None:
         await engine.dispose()
 
 
+async def execution_risk() -> None:
+    settings = get_settings()
+    engine = create_database_engine(settings.database_url)
+    sessions = create_session_factory(engine)
+    try:
+        async with sessions() as session:
+            quote = await session.scalar(
+                select(MarketQuoteRecord).order_by(desc(MarketQuoteRecord.created_at))
+            )
+            if quote is None:
+                raise RuntimeError("no Phase 11 market quote is available")
+            decision = await ExecutionRiskService(session).evaluate(
+                quote.id,
+                ExecutionRiskInput(
+                    signal_id=uuid.uuid4(),
+                    market_quote_id=quote.id,
+                    requested_quantity=Decimal("10"),
+                    requested_notional=Decimal("3000"),
+                    spread_pct=Decimal(quote.spread_pct),
+                    expected_slippage_pct=Decimal("0.2"),
+                    average_daily_volume_notional=Decimal("100000"),
+                    available_book_notional=Decimal("10000"),
+                    market_data_status=quote.status,
+                ),
+                configuration_version="smoke-1",
+            )
+            if decision.action != "REDUCE" or decision.approved_notional != Decimal("2000"):
+                raise RuntimeError(
+                    f"unexpected Phase 12 execution decision: {decision.action} "
+                    f"{decision.approved_notional}"
+                )
+            print(
+                "PASS Phase 12 liquidity decision: "
+                f"action={decision.action}, approved_notional={decision.approved_notional}"
+            )
+    finally:
+        await engine.dispose()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Olive Phase 2 live smoke test")
     parser.add_argument(
@@ -669,6 +726,7 @@ def main() -> int:
             "protection",
             "regime",
             "market-data",
+            "execution-risk",
         ),
     )
     parser.add_argument(
@@ -696,6 +754,8 @@ def main() -> int:
             asyncio.run(regime())
         elif args.command == "market-data":
             asyncio.run(market_data())
+        elif args.command == "execution-risk":
+            asyncio.run(execution_risk())
         else:
             send(args.url)
     except Exception as exc:
