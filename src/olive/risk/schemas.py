@@ -207,3 +207,51 @@ class CorrelationRiskDecision(BaseModel):
     current_cluster_stop_risk: Decimal
     projected_cluster_stop_risk: Decimal
     reasons: list[str]
+
+
+class MultiplierBounds(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    minimum: Decimal = Field(gt=0)
+    maximum: Decimal = Field(gt=0)
+
+
+class DynamicRiskInput(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    signal_id: uuid.UUID
+    base_risk_pct: Decimal = Field(gt=0)
+    hard_max_risk_pct: Decimal = Field(gt=0)
+    regime: Decimal = Field(gt=0)
+    correlation: Decimal = Field(gt=0)
+    drawdown: Decimal = Field(gt=0)
+    liquidity: Decimal = Field(gt=0)
+    signal_quality: Decimal = Field(gt=0)
+    strategy_health: Decimal = Field(gt=0)
+    event_risk: Decimal = Field(gt=0)
+
+
+class DynamicRiskPolicy(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    regime: MultiplierBounds
+    correlation: MultiplierBounds
+    drawdown: MultiplierBounds
+    liquidity: MultiplierBounds
+    signal_quality: MultiplierBounds
+    strategy_health: MultiplierBounds
+    event_risk: MultiplierBounds
+
+
+class DynamicRiskDecision(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    signal_id: uuid.UUID
+    base_risk_pct: Decimal
+    raw_multipliers: dict[str, Decimal]
+    bounded_multipliers: dict[str, Decimal]
+    multiplier_product: Decimal
+    uncapped_risk_pct: Decimal
+    final_risk_pct: Decimal
+    caps: dict[str, Decimal]
+    reasons: list[str]

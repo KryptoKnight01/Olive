@@ -30,7 +30,9 @@ from olive.domain.models import (
 )
 from olive.gateway.models import SignalIntakeRecord, SignalIntakeStatus
 from olive.risk.models import (
+    CorrelationRiskDecisionRecord,
     CorrelationRiskPolicyRecord,
+    DynamicRiskPolicyRecord,
     HierarchicalExposureLimitRecord,
     HierarchicalRiskDecisionRecord,
     PortfolioRiskDecisionRecord,
@@ -40,6 +42,7 @@ from olive.risk.models import (
 )
 from olive.risk.schemas import (
     CorrelationRiskInput,
+    DynamicRiskInput,
     HierarchicalRiskInput,
     PortfolioRiskInput,
     PositionSide,
@@ -47,6 +50,7 @@ from olive.risk.schemas import (
 )
 from olive.risk.service import (
     CorrelationRiskService,
+    DynamicRiskService,
     HierarchicalRiskService,
     PortfolioRiskService,
     SingleTradeRiskService,
@@ -165,6 +169,23 @@ async def seed() -> None:
                     cluster_threshold=Decimal("0.8"),
                     max_correlated_positions=2,
                     max_cluster_stop_risk=Decimal("3000"),
+                )
+            )
+            neutral_bounds = {
+                name: {"minimum": "0.25", "maximum": "1.25"}
+                for name in (
+                    "regime",
+                    "correlation",
+                    "drawdown",
+                    "liquidity",
+                    "signal_quality",
+                    "strategy_health",
+                    "event_risk",
+                )
+            }
+            session.add(
+                DynamicRiskPolicyRecord(
+                    configuration_version="smoke-1", bounds=neutral_bounds
                 )
             )
             await session.commit()
@@ -390,11 +411,49 @@ async def correlation() -> None:
         await engine.dispose()
 
 
+async def dynamic() -> None:
+    settings = get_settings()
+    engine = create_database_engine(settings.database_url)
+    sessions = create_session_factory(engine)
+    try:
+        async with sessions() as session:
+            correlation_decision = await session.scalar(
+                select(CorrelationRiskDecisionRecord).order_by(
+                    desc(CorrelationRiskDecisionRecord.created_at)
+                )
+            )
+            if correlation_decision is None:
+                raise RuntimeError("no Phase 7 correlation decision is available")
+            decision = await DynamicRiskService(session).evaluate(
+                correlation_decision.id,
+                DynamicRiskInput(
+                    signal_id=uuid.uuid4(),
+                    base_risk_pct=Decimal("1"),
+                    hard_max_risk_pct=Decimal("1.5"),
+                    regime=Decimal("0.8"),
+                    correlation=Decimal("1"),
+                    drawdown=Decimal("1"),
+                    liquidity=Decimal("1"),
+                    signal_quality=Decimal("1"),
+                    strategy_health=Decimal("1"),
+                    event_risk=Decimal("1"),
+                ),
+                configuration_version="smoke-1",
+            )
+            if decision.final_risk_pct != Decimal("0.8"):
+                raise RuntimeError(f"unexpected Phase 8 risk: {decision.final_risk_pct}")
+            print(f"PASS Phase 8 dynamic risk decision: risk={decision.final_risk_pct}%")
+    finally:
+        await engine.dispose()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Olive Phase 2 live smoke test")
     parser.add_argument(
         "command",
-        choices=("seed", "send", "risk", "portfolio", "hierarchy", "correlation"),
+        choices=(
+            "seed", "send", "risk", "portfolio", "hierarchy", "correlation", "dynamic"
+        ),
     )
     parser.add_argument(
         "--url",
@@ -413,6 +472,8 @@ def main() -> int:
             asyncio.run(hierarchy())
         elif args.command == "correlation":
             asyncio.run(correlation())
+        elif args.command == "dynamic":
+            asyncio.run(dynamic())
         else:
             send(args.url)
     except Exception as exc:
