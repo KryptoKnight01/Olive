@@ -46,6 +46,18 @@ from olive.market_data.service import MarketDataService
 from olive.paper.oms import PaperOms
 from olive.paper.pipeline import PaperPipeline
 from olive.paper.sandbox import FirstVenueSandboxConnector
+from olive.readiness.engine import LiveReadinessEngine
+from olive.readiness.schemas import (
+    EventObservation,
+    EventRiskPolicy,
+    HealthStatus,
+    PerformanceMetrics,
+    PerformanceThresholds,
+    ReadinessCheck,
+    ShadowOrder,
+    StressInput,
+    StressScenario,
+)
 from olive.risk.models import (
     CorrelationRiskDecisionRecord,
     CorrelationRiskPolicyRecord,
@@ -209,9 +221,7 @@ async def seed() -> None:
                 )
             }
             session.add(
-                DynamicRiskPolicyRecord(
-                    configuration_version="smoke-1", bounds=neutral_bounds
-                )
+                DynamicRiskPolicyRecord(configuration_version="smoke-1", bounds=neutral_bounds)
             )
             session.add(
                 LossProtectionPolicyRecord(
@@ -429,9 +439,7 @@ async def portfolio() -> None:
     try:
         async with sessions() as session:
             trade_decision = await session.scalar(
-                select(TradeRiskDecisionRecord).order_by(
-                    desc(TradeRiskDecisionRecord.created_at)
-                )
+                select(TradeRiskDecisionRecord).order_by(desc(TradeRiskDecisionRecord.created_at))
             )
             if trade_decision is None:
                 raise RuntimeError("no Phase 4 trade decision is available")
@@ -449,8 +457,7 @@ async def portfolio() -> None:
             if decision.outcome is not RiskDecisionOutcome.APPROVED:
                 raise RuntimeError(f"unexpected Phase 5 decision: {decision.decision}")
             print(
-                "PASS Phase 5 projected portfolio decision: "
-                f"notional={decision.approved_notional}"
+                f"PASS Phase 5 projected portfolio decision: notional={decision.approved_notional}"
             )
     finally:
         await engine.dispose()
@@ -520,10 +527,7 @@ async def correlation() -> None:
             )
             if decision.outcome is not RiskDecisionOutcome.APPROVED:
                 raise RuntimeError(f"unexpected Phase 7 decision: {decision.decision}")
-            print(
-                "PASS Phase 7 correlation-aware decision: "
-                f"cluster={decision.proposed_cluster}"
-            )
+            print(f"PASS Phase 7 correlation-aware decision: cluster={decision.proposed_cluster}")
     finally:
         await engine.dispose()
 
@@ -678,9 +682,7 @@ async def market_data() -> None:
                 evaluated_at=now,
             )
             if decision.status != "VALID":
-                raise RuntimeError(
-                    f"unexpected Phase 11 market-data status: {decision.status}"
-                )
+                raise RuntimeError(f"unexpected Phase 11 market-data status: {decision.status}")
             print(
                 "PASS Phase 11 normalized market quote: "
                 f"status={decision.status}, mid={decision.mid}, spread={decision.spread}"
@@ -780,18 +782,98 @@ async def governance_controls() -> None:
     )
 
 
+async def live_readiness() -> None:
+    engine = LiveReadinessEngine()
+    performance = engine.assess_performance(
+        PerformanceMetrics(
+            strategy_key="OLC",
+            profit_factor=Decimal("1.7"),
+            win_rate=Decimal("55"),
+            expectancy_r=Decimal("0.25"),
+            average_r=Decimal("0.4"),
+            max_drawdown_pct=Decimal("8"),
+            trades=100,
+            slippage_pct=Decimal("0.2"),
+        ),
+        PerformanceThresholds(),
+    )
+    stress = engine.run_stress_test(
+        StressInput(
+            portfolio_value=Decimal("100000"),
+            gross_exposure=Decimal("200000"),
+            available_margin=Decimal("10000"),
+            max_loss_pct=Decimal("10"),
+        ),
+        StressScenario(
+            name="crash",
+            volatility_multiplier=Decimal("2"),
+            correlation_multiplier=Decimal("1.5"),
+            liquidity_reduction_pct=Decimal("50"),
+            gap_pct=Decimal("10"),
+            venue_failure=True,
+        ),
+    )
+    event = engine.evaluate_event(
+        EventObservation(event_key="FOMC", minutes_from_event=5),
+        EventRiskPolicy(
+            blackout_minutes_before=30, blackout_minutes_after=15, risk_multiplier=Decimal("0.5")
+        ),
+    )
+    shadow = engine.simulate_shadow(
+        ShadowOrder(
+            signal_id=str(uuid.uuid4()),
+            strategy_key="OLC",
+            instrument="BTCUSDT",
+            side="BUY",
+            quantity=Decimal("1"),
+            reference_price=Decimal("50000"),
+        ),
+        Decimal("0.1"),
+    )
+    required = (
+        "security",
+        "risk",
+        "execution",
+        "reconciliation",
+        "backup",
+        "monitoring",
+        "kill-switch",
+        "incident-response",
+    )
+    review = engine.review(
+        [ReadinessCheck(name=name, passed=True, evidence="smoke verified") for name in required]
+    )
+    if performance.status is not HealthStatus.GREEN:
+        raise RuntimeError(f"unexpected strategy health: {performance.status}")
+    if not stress.blocked or event.entries_allowed:
+        raise RuntimeError("stress or event risk failed to block unsafe activity")
+    if shadow.sent_to_venue or not review.approved:
+        raise RuntimeError("shadow isolation or readiness review failed")
+    print(
+        "PASS Phases 23-27 live readiness: strategy=GREEN, stress=BLOCKED, "
+        "event=BLACKOUT, shadow=ISOLATED, review=APPROVED"
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Olive Phase 2 live smoke test")
     parser.add_argument(
         "command",
         choices=(
-            "seed", "send", "risk", "portfolio", "hierarchy", "correlation", "dynamic",
+            "seed",
+            "send",
+            "risk",
+            "portfolio",
+            "hierarchy",
+            "correlation",
+            "dynamic",
             "protection",
             "regime",
             "market-data",
             "execution-risk",
             "paper-pipeline",
             "governance-controls",
+            "live-readiness",
         ),
     )
     parser.add_argument(
@@ -825,6 +907,8 @@ def main() -> int:
             asyncio.run(paper_pipeline())
         elif args.command == "governance-controls":
             asyncio.run(governance_controls())
+        elif args.command == "live-readiness":
+            asyncio.run(live_readiness())
         else:
             send(args.url)
     except Exception as exc:

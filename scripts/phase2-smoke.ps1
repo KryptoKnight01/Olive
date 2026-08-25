@@ -58,7 +58,10 @@ try {
     docker compose run --rm api python -m olive.smoke.phase2 governance-controls
     if ($LASTEXITCODE -ne 0) { throw "Phases 18-22 governance verification failed." }
 
-    Write-Host "Phase 2-22 end-to-end smoke test passed." -ForegroundColor Green
+    docker compose run --rm api python -m olive.smoke.phase2 live-readiness
+    if ($LASTEXITCODE -ne 0) { throw "Phases 23-27 live-readiness verification failed." }
+
+    Write-Host "Phase 2-27 end-to-end smoke test passed." -ForegroundColor Green
 }
 finally {
     docker compose down --volumes
