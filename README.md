@@ -11,6 +11,9 @@ Phases 33–37 add separated capital-pool accounting, sliced execution plans, ad
 analytics, a deterministic native strategy engine, and a parity-gated path away from TradingView
 as production-critical infrastructure.
 
+Phases 38–40 complete the roadmap with monitoring-first mobile controls, hard-limit-subordinate
+ML guardrails, anomaly detection, and evidence-based production release hardening.
+
 Olive is a risk-first trading platform built in acceptance-gated phases. The current Phase 4 implementation securely receives, validates, and sizes candidate signals, but cannot place orders.
 
 ## Phase 0 capabilities

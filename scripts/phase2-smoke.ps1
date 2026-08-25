@@ -67,7 +67,10 @@ try {
     docker compose run --rm api python -m olive.smoke.phase2 strategy-evolution
     if ($LASTEXITCODE -ne 0) { throw "Phases 33-37 strategy-evolution verification failed." }
 
-    Write-Host "Phase 2-37 end-to-end smoke test passed." -ForegroundColor Green
+    docker compose run --rm api python -m olive.smoke.phase2 roadmap-completion
+    if ($LASTEXITCODE -ne 0) { throw "Phases 38-40 roadmap-completion verification failed." }
+
+    Write-Host "Phase 2-40 complete roadmap smoke test passed." -ForegroundColor Green
 }
 finally {
     docker compose down --volumes

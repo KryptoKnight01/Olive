@@ -15,6 +15,7 @@ from olive.execution_risk import models as execution_risk_models  # noqa: F401
 from olive.gateway import models as gateway_models  # noqa: F401
 from olive.governance import models as governance_models  # noqa: F401
 from olive.market_data import models as market_data_models  # noqa: F401
+from olive.operations import models as operations_models  # noqa: F401
 from olive.paper import models as paper_models  # noqa: F401
 from olive.production import models as production_models  # noqa: F401
 from olive.readiness import models as readiness_models  # noqa: F401
