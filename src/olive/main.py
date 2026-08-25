@@ -49,10 +49,12 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     application.include_router(health_router)
+    from olive.api.admin import router as admin_router
     from olive.api.asset_master import router as asset_master_router
     from olive.api.market_data import router as market_data_router
     from olive.api.signal_gateway import router as signal_gateway_router
 
+    application.include_router(admin_router)
     application.include_router(asset_master_router)
     application.include_router(market_data_router)
     application.include_router(signal_gateway_router)

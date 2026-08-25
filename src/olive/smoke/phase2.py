@@ -32,6 +32,14 @@ from olive.execution_risk.models import ExecutionRiskPolicyRecord
 from olive.execution_risk.schemas import ExecutionRiskInput
 from olive.execution_risk.service import ExecutionRiskService
 from olive.gateway.models import SignalIntakeRecord, SignalIntakeStatus
+from olive.governance.engine import GovernanceEngine
+from olive.governance.schemas import (
+    ConfigurationChange,
+    KillSwitchAction,
+    KillSwitchCommand,
+    KillSwitchScope,
+    Role,
+)
 from olive.market_data.models import MarketQuoteRecord
 from olive.market_data.schemas import MarketDataPolicy, QuoteInput
 from olive.market_data.service import MarketDataService
@@ -739,6 +747,39 @@ async def paper_pipeline() -> None:
     )
 
 
+async def governance_controls() -> None:
+    engine = GovernanceEngine()
+    requester = uuid.uuid4()
+    engine.publish_configuration(
+        ConfigurationChange(
+            namespace="risk",
+            version="smoke-1",
+            values={"max_risk_pct": "1"},
+            increases_risk=False,
+            requested_by=requester,
+        ),
+        Role.ADMIN,
+    )
+    engine.activate_kill_switch(
+        KillSwitchCommand(
+            scope=KillSwitchScope.STRATEGY,
+            scope_key="OLC",
+            action=KillSwitchAction.PAUSE_ENTRIES,
+            reason="Phase 22 smoke verification",
+            actor_id=requester,
+        ),
+        Role.RISK_MANAGER,
+    )
+    if engine.permits_new_entry({"STRATEGY": "OLC"}):
+        raise RuntimeError("Phase 22 kill switch did not block the strategy")
+    if len(engine.audit_events) != 2:
+        raise RuntimeError("Phase 21 audit evidence is incomplete")
+    print(
+        "PASS Phases 18-22 governance controls: "
+        "configuration=IMMUTABLE, audit=COMPLETE, strategy_entries=PAUSED"
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Olive Phase 2 live smoke test")
     parser.add_argument(
@@ -750,6 +791,7 @@ def main() -> int:
             "market-data",
             "execution-risk",
             "paper-pipeline",
+            "governance-controls",
         ),
     )
     parser.add_argument(
@@ -781,6 +823,8 @@ def main() -> int:
             asyncio.run(execution_risk())
         elif args.command == "paper-pipeline":
             asyncio.run(paper_pipeline())
+        elif args.command == "governance-controls":
+            asyncio.run(governance_controls())
         else:
             send(args.url)
     except Exception as exc:

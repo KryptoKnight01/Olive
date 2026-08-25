@@ -170,6 +170,16 @@ See `docs/phase-12.md` for the complete Phase 12 contract.
 
 See `docs/phase-13.md` through `docs/phase-17.md` for the individual contracts.
 
+## Phases 18-22 capabilities
+
+- Administrative command-center API backed by operational ledgers
+- Immutable versioned configuration with dual approval for risk increases
+- Viewer, Analyst, Trader, Risk Manager, Admin, and Super Admin permissions
+- Reconstructable audit events for configuration and emergency actions
+- Scoped entry pauses, order cancellation, position closure, and emergency-halt controls
+
+See `docs/phase-18.md` through `docs/phase-22.md` for the individual contracts.
+
 ## Acceptance automation
 
 The `Olive acceptance` workflow runs unit/static checks, validates the Alembic chain, builds the complete Compose stack, applies migrations, checks schema drift, and probes both health contracts. The next phase must not begin until this workflow passes in a Docker-capable runner.
