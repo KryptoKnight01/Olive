@@ -16,6 +16,7 @@ from olive.gateway.auth import SignalAuthenticator
 from olive.gateway.errors import GatewayError
 from olive.health import InfrastructureHealthChecker
 from olive.logging import configure_logging
+from olive.market_data.service import MarketDataError
 
 
 def create_app() -> FastAPI:
@@ -49,9 +50,11 @@ def create_app() -> FastAPI:
     )
     application.include_router(health_router)
     from olive.api.asset_master import router as asset_master_router
+    from olive.api.market_data import router as market_data_router
     from olive.api.signal_gateway import router as signal_gateway_router
 
     application.include_router(asset_master_router)
+    application.include_router(market_data_router)
     application.include_router(signal_gateway_router)
 
     @application.exception_handler(DomainNotFound)
@@ -73,6 +76,13 @@ def create_app() -> FastAPI:
         if intake_id is not None:
             content["intake_id"] = str(intake_id)
         return JSONResponse(status_code=exc.status_code, content=content)
+
+    @application.exception_handler(MarketDataError)
+    async def handle_market_data_error(_request: object, exc: MarketDataError) -> JSONResponse:
+        return JSONResponse(
+            status_code=422,
+            content={"code": "MARKET_DATA_ERROR", "detail": str(exc)},
+        )
 
     return application
 
