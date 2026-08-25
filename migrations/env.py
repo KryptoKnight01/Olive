@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from olive.config import get_settings
 from olive.db import Base
 from olive.domain import models  # noqa: F401
+from olive.evolution import models as evolution_models  # noqa: F401
 from olive.execution_risk import models as execution_risk_models  # noqa: F401
 from olive.gateway import models as gateway_models  # noqa: F401
 from olive.governance import models as governance_models  # noqa: F401
