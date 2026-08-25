@@ -21,6 +21,8 @@ from olive.risk.models import (
     HierarchicalRiskDecisionRecord,
     LossProtectionDecisionRecord,
     LossProtectionPolicyRecord,
+    PortfolioRegimeDecisionRecord,
+    PortfolioRegimePolicyRecord,
     PortfolioRiskDecisionRecord,
     PortfolioRiskPolicyRecord,
     SingleTradeRiskPolicyRecord,
@@ -29,6 +31,7 @@ from olive.risk.models import (
 from olive.risk.multipliers import DynamicRiskMultiplierEngine
 from olive.risk.portfolio import PortfolioRiskEngine
 from olive.risk.protection import LossProtectionEngine
+from olive.risk.regime import PortfolioRegimeEngine
 from olive.risk.schemas import (
     CorrelationRiskInput,
     CorrelationRiskPolicy,
@@ -40,6 +43,8 @@ from olive.risk.schemas import (
     HierarchicalRiskInput,
     LossProtectionInput,
     LossProtectionPolicy,
+    PortfolioRegimeInput,
+    PortfolioRegimePolicy,
     PortfolioRiskInput,
     PortfolioRiskPolicy,
     SingleTradeRiskInput,
@@ -381,3 +386,51 @@ class LossProtectionService:
         return {
             key: value if isinstance(value, int) else str(value) for key, value in values.items()
         }
+
+
+class PortfolioRegimeService:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def evaluate(
+        self,
+        loss_protection_decision_id: uuid.UUID,
+        request: PortfolioRegimeInput,
+        *,
+        configuration_version: str,
+    ) -> PortfolioRegimeDecisionRecord:
+        protection = await self._session.get(
+            LossProtectionDecisionRecord, loss_protection_decision_id
+        )
+        if protection is None:
+            raise RiskEvaluationError("loss protection decision was not found")
+        policy_record = await self._session.scalar(
+            select(PortfolioRegimePolicyRecord).where(
+                PortfolioRegimePolicyRecord.configuration_version == configuration_version
+            )
+        )
+        if policy_record is None:
+            raise RiskEvaluationError("portfolio regime policy is not configured")
+        decision = PortfolioRegimeEngine().evaluate(
+            request,
+            PortfolioRegimePolicy.model_validate(
+                {"thresholds": policy_record.thresholds, "controls": policy_record.controls}
+            ),
+        )
+        result = PortfolioRegimeDecisionRecord(
+            loss_protection_decision_id=protection.id,
+            portfolio_regime_policy_id=policy_record.id,
+            observation_id=decision.observation_id,
+            regime=decision.regime.value,
+            metrics={key: str(value) for key, value in decision.metrics.items()},
+            metric_regimes={key: value.value for key, value in decision.metric_regimes.items()},
+            controls={
+                "risk_multiplier": str(decision.controls.risk_multiplier),
+                "max_leverage": str(decision.controls.max_leverage),
+                "max_new_positions": decision.controls.max_new_positions,
+            },
+            reasons=decision.reasons,
+        )
+        self._session.add(result)
+        await self._session.commit()
+        return result
