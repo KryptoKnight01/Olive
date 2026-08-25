@@ -15,6 +15,8 @@ from olive.risk.hierarchy import HierarchicalExposureEngine
 from olive.risk.models import (
     CorrelationRiskDecisionRecord,
     CorrelationRiskPolicyRecord,
+    DynamicRiskDecisionRecord,
+    DynamicRiskPolicyRecord,
     HierarchicalExposureLimitRecord,
     HierarchicalRiskDecisionRecord,
     PortfolioRiskDecisionRecord,
@@ -22,10 +24,13 @@ from olive.risk.models import (
     SingleTradeRiskPolicyRecord,
     TradeRiskDecisionRecord,
 )
+from olive.risk.multipliers import DynamicRiskMultiplierEngine
 from olive.risk.portfolio import PortfolioRiskEngine
 from olive.risk.schemas import (
     CorrelationRiskInput,
     CorrelationRiskPolicy,
+    DynamicRiskInput,
+    DynamicRiskPolicy,
     ExposureDimension,
     ExposureMetric,
     HierarchicalExposureLimit,
@@ -275,6 +280,50 @@ class CorrelationRiskService:
             cluster_position_count=decision.current_cluster_positions,
             current_cluster_stop_risk=decision.current_cluster_stop_risk,
             projected_cluster_stop_risk=decision.projected_cluster_stop_risk,
+            reasons=decision.reasons,
+        )
+        self._session.add(result)
+        await self._session.commit()
+        return result
+
+
+class DynamicRiskService:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def evaluate(
+        self,
+        correlation_risk_decision_id: uuid.UUID,
+        request: DynamicRiskInput,
+        *,
+        configuration_version: str,
+    ) -> DynamicRiskDecisionRecord:
+        correlation_decision = await self._session.get(
+            CorrelationRiskDecisionRecord, correlation_risk_decision_id
+        )
+        if correlation_decision is None:
+            raise RiskEvaluationError("correlation risk decision was not found")
+        policy_record = await self._session.scalar(
+            select(DynamicRiskPolicyRecord).where(
+                DynamicRiskPolicyRecord.configuration_version == configuration_version
+            )
+        )
+        if policy_record is None:
+            raise RiskEvaluationError("dynamic risk policy is not configured")
+        policy = DynamicRiskPolicy.model_validate(policy_record.bounds)
+        decision = DynamicRiskMultiplierEngine().evaluate(request, policy)
+        result = DynamicRiskDecisionRecord(
+            correlation_risk_decision_id=correlation_decision.id,
+            dynamic_risk_policy_id=policy_record.id,
+            base_risk_pct=decision.base_risk_pct,
+            raw_multipliers={key: str(value) for key, value in decision.raw_multipliers.items()},
+            bounded_multipliers={
+                key: str(value) for key, value in decision.bounded_multipliers.items()
+            },
+            multiplier_product=decision.multiplier_product,
+            uncapped_risk_pct=decision.uncapped_risk_pct,
+            final_risk_pct=decision.final_risk_pct,
+            caps={key: str(value) for key, value in decision.caps.items()},
             reasons=decision.reasons,
         )
         self._session.add(result)

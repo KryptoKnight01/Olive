@@ -187,3 +187,35 @@ class CorrelationRiskDecisionRecord(UuidMixin, TimestampMixin, Base):
     @property
     def outcome(self) -> RiskDecisionOutcome:
         return RiskDecisionOutcome(self.decision)
+
+
+class DynamicRiskPolicyRecord(UuidMixin, TimestampMixin, Base):
+    __tablename__ = "dynamic_risk_policies"
+    __table_args__ = (
+        UniqueConstraint("configuration_version", name="uq_dynamic_risk_policy_version"),
+    )
+
+    configuration_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    bounds: Mapped[dict[str, dict[str, str]]] = mapped_column(JSON, nullable=False)
+
+
+class DynamicRiskDecisionRecord(UuidMixin, TimestampMixin, Base):
+    __tablename__ = "dynamic_risk_decisions"
+    __table_args__ = (
+        UniqueConstraint("correlation_risk_decision_id", name="uq_dynamic_decision_correlation"),
+    )
+
+    correlation_risk_decision_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("correlation_risk_decisions.id", ondelete="RESTRICT"), nullable=False
+    )
+    dynamic_risk_policy_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("dynamic_risk_policies.id", ondelete="RESTRICT"), nullable=False
+    )
+    base_risk_pct: Mapped[Decimal] = mapped_column(Numeric(10, 6), nullable=False)
+    raw_multipliers: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False)
+    bounded_multipliers: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False)
+    multiplier_product: Mapped[Decimal] = mapped_column(Numeric(20, 12), nullable=False)
+    uncapped_risk_pct: Mapped[Decimal] = mapped_column(Numeric(20, 12), nullable=False)
+    final_risk_pct: Mapped[Decimal] = mapped_column(Numeric(20, 12), nullable=False)
+    caps: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False)
+    reasons: Mapped[list[str]] = mapped_column(JSON, nullable=False)
