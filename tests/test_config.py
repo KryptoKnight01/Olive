@@ -31,6 +31,13 @@ def test_signal_secret_is_redacted_from_settings_representation() -> None:
     assert "never-print-this" not in repr(settings)
 
 
+def test_admin_secret_is_redacted_and_requires_minimum_length() -> None:
+    with pytest.raises(ValidationError):
+        Settings(admin_api_key=SecretStr("short"))
+    settings = Settings(admin_api_key=SecretStr("a" * 32))
+    assert "a" * 32 not in repr(settings)
+
+
 def test_nonce_ttl_must_cover_freshness_window() -> None:
     with pytest.raises(ValidationError):
         Settings(signal_max_age_seconds=600, signal_nonce_ttl_seconds=300)

@@ -7,6 +7,8 @@ from functools import lru_cache
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from olive.governance.schemas import Role
+
 
 class AppEnvironment(StrEnum):
     DEVELOPMENT = "development"
@@ -47,6 +49,8 @@ class Settings(BaseSettings):
     paper_available_margin: Decimal = Field(default=Decimal("50000"), ge=0)
     paper_requested_risk_pct: Decimal = Field(default=Decimal("1"), gt=0, le=100)
     paper_fee_rate: Decimal = Field(default=Decimal("0.001"), ge=0, le=1)
+    admin_api_key: SecretStr | None = Field(default=None, min_length=32)
+    admin_api_role: Role = Role.VIEWER
 
     @model_validator(mode="after")
     def validate_gateway_windows(self) -> Settings:

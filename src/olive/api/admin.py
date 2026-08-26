@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from olive.db import get_session
 from olive.gateway.models import SignalIntakeRecord
+from olive.governance.auth import AdminViewerDependency
 from olive.governance.models import KillSwitchRecord
 from olive.governance.schemas import (
     AdminSnapshot,
@@ -23,7 +24,9 @@ SessionDependency = Annotated[AsyncSession, Depends(get_session)]
 
 
 @router.get("/command-center", response_model=AdminSnapshot)
-async def command_center(session: SessionDependency) -> AdminSnapshot:
+async def command_center(
+    session: SessionDependency, _principal: AdminViewerDependency
+) -> AdminSnapshot:
     positions = await session.scalar(
         select(func.count()).select_from(PaperPositionRecord).where(
             PaperPositionRecord.quantity != 0
@@ -54,6 +57,7 @@ async def command_center(session: SessionDependency) -> AdminSnapshot:
 @router.get("/paper-executions", response_model=PaperExecutionMonitor)
 async def paper_executions(
     session: SessionDependency,
+    _principal: AdminViewerDependency,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> PaperExecutionMonitor:
     rows = (
