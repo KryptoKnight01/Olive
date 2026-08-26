@@ -1,0 +1,73 @@
+name: olive-staging
+
+services:
+  api:
+    build:
+      context: .
+    environment:
+      OLIVE_APP_ENV: staging
+      OLIVE_APP_VERSION: ${OLIVE_APP_VERSION:-0.1.0-staging}
+      OLIVE_DATABASE_URL: postgresql+asyncpg://olive:${OLIVE_POSTGRES_PASSWORD:?set OLIVE_POSTGRES_PASSWORD}@postgres:5432/olive
+      OLIVE_REDIS_URL: redis://redis:6379/0
+      OLIVE_LOG_LEVEL: ${OLIVE_LOG_LEVEL:-INFO}
+      OLIVE_SIGNAL_HMAC_KEY_ID: ${OLIVE_SIGNAL_HMAC_KEY_ID:?set OLIVE_SIGNAL_HMAC_KEY_ID}
+      OLIVE_SIGNAL_HMAC_SECRET: ${OLIVE_SIGNAL_HMAC_SECRET:?set OLIVE_SIGNAL_HMAC_SECRET}
+      OLIVE_SIGNAL_MAX_AGE_SECONDS: ${OLIVE_SIGNAL_MAX_AGE_SECONDS:-300}
+      OLIVE_SIGNAL_NONCE_TTL_SECONDS: ${OLIVE_SIGNAL_NONCE_TTL_SECONDS:-900}
+    ports:
+      - "127.0.0.1:${OLIVE_STAGING_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: olive
+      POSTGRES_USER: olive
+      POSTGRES_PASSWORD: ${OLIVE_POSTGRES_PASSWORD:?set OLIVE_POSTGRES_PASSWORD}
+    volumes:
+      - olive-staging-postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U olive -d olive"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    volumes:
+      - olive-staging-redis:/data
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  olive-staging-postgres:
+  olive-staging-redis:
+
