@@ -42,11 +42,21 @@ class Settings(BaseSettings):
     market_data_max_future_skew_seconds: int = Field(default=2, ge=0, le=60)
     market_data_max_spread_pct: Decimal = Field(default=Decimal("5"), gt=0, le=100)
     market_data_max_price_jump_pct: Decimal = Field(default=Decimal("20"), gt=0, le=1000)
+    paper_auto_execute: bool = False
+    paper_equity: Decimal = Field(default=Decimal("100000"), gt=0)
+    paper_available_margin: Decimal = Field(default=Decimal("50000"), ge=0)
+    paper_requested_risk_pct: Decimal = Field(default=Decimal("1"), gt=0, le=100)
+    paper_fee_rate: Decimal = Field(default=Decimal("0.001"), ge=0, le=1)
 
     @model_validator(mode="after")
     def validate_gateway_windows(self) -> Settings:
         if self.signal_nonce_ttl_seconds < self.signal_max_age_seconds:
             raise ValueError("signal nonce TTL must cover the full accepted signal age")
+        if self.paper_auto_execute and self.app_env not in {
+            AppEnvironment.PAPER,
+            AppEnvironment.STAGING,
+        }:
+            raise ValueError("automatic paper execution is allowed only in paper or staging")
         return self
 
     @property

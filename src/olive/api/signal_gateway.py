@@ -11,6 +11,7 @@ from olive.gateway.auth import GatewayHeaders, SignalAuthenticator
 from olive.gateway.errors import SignalIntakeError
 from olive.gateway.schemas import SignalIntakeResponse
 from olive.gateway.service import SignalIntakeService
+from olive.paper.orchestration import AutomaticPaperOrchestrator
 
 router = APIRouter(prefix="/api/v1/signals", tags=["signal-gateway"])
 SessionDependency = Annotated[AsyncSession, Depends(get_session)]
@@ -51,4 +52,10 @@ async def receive_tradingview_signal(
             signature=signature,
         ),
     )
-    return await SignalIntakeService(session, settings).ingest(body)
+    response = await SignalIntakeService(session, settings).ingest(body)
+    if settings.paper_auto_execute:
+        paper_execution = await AutomaticPaperOrchestrator(session, settings).execute(
+            response.intake_id
+        )
+        return response.model_copy(update={"paper_execution": paper_execution})
+    return response

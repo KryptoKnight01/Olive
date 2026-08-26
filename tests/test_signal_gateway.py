@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from olive.api.signal_gateway import get_signal_authenticator
+from olive.config import AppEnvironment, Settings
 from olive.db import Base, get_session
 from olive.domain.models import (
     Asset,
@@ -30,6 +31,9 @@ from olive.gateway.auth import GatewayHeaders
 from olive.gateway.errors import GatewayAuthenticationError
 from olive.gateway.models import SignalIntakeRecord, SignalIntakeStatus
 from olive.main import app
+from olive.paper.models import PaperPipelineRunRecord
+from olive.paper.orchestration import AutomaticPaperOrchestrator
+from olive.risk.models import SingleTradeRiskPolicyRecord
 from olive.validation.models import SignalValidationPolicy
 
 
@@ -128,6 +132,18 @@ async def seed_reference_data(sessions: async_sessionmaker[AsyncSession]) -> Non
                 min_setup_score=Decimal("70"),
             )
         )
+        session.add(
+            SingleTradeRiskPolicyRecord(
+                strategy_version_id=version.id,
+                base_risk_pct=Decimal("1"),
+                max_risk_pct=Decimal("1.5"),
+                max_notional=Decimal("100000"),
+                max_leverage=Decimal("3"),
+                max_margin=Decimal("50000"),
+                min_stop_distance_pct=Decimal("0.25"),
+                max_stop_distance_pct=Decimal("10"),
+            )
+        )
         await session.commit()
 
 
@@ -182,6 +198,36 @@ async def test_authenticated_signal_is_persisted_as_received(
         assert record is not None
         assert record.strategy_version_id is not None
         assert record.venue_instrument_id is not None
+
+
+async def test_validated_signal_can_automatically_execute_in_paper(
+    gateway_context: GatewayTestContext,
+) -> None:
+    response = await gateway_context.client.post(
+        "/api/v1/signals/tradingview",
+        json=valid_payload(),
+        headers=gateway_headers("paper-auto"),
+    )
+    intake_id = uuid.UUID(response.json()["intake_id"])
+    settings = Settings(
+        app_env=AppEnvironment.STAGING,
+        paper_auto_execute=True,
+        paper_equity=Decimal("100000"),
+        paper_available_margin=Decimal("50000"),
+        paper_requested_risk_pct=Decimal("1"),
+    )
+    async with gateway_context.sessions() as session:
+        result = await AutomaticPaperOrchestrator(session, settings).execute(intake_id)
+        assert result.outcome == "EXECUTED"
+        assert result.order_status == "FILLED"
+        assert result.protection_status == "PROTECTED"
+        assert result.reconciled is True
+        run = await session.scalar(
+            select(PaperPipelineRunRecord).where(
+                PaperPipelineRunRecord.signal_id == uuid.UUID(response.json()["signal_id"])
+            )
+        )
+        assert run is not None
 
 
 def test_signal_environment_uses_wire_values_in_database() -> None:
