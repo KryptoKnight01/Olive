@@ -14,6 +14,9 @@ as production-critical infrastructure.
 Phases 38–40 complete the roadmap with monitoring-first mobile controls, hard-limit-subordinate
 ML guardrails, anomaly detection, and evidence-based production release hardening.
 
+The post-roadmap staging baseline is documented in `docs/staging-deployment.md` and started on
+Windows with `scripts/staging-up.ps1`. It remains live-trading-disarmed by design.
+
 Olive is a risk-first trading platform built in acceptance-gated phases. The current Phase 4 implementation securely receives, validates, and sizes candidate signals, but cannot place orders.
 
 ## Phase 0 capabilities
