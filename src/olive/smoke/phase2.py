@@ -53,6 +53,14 @@ from olive.governance.schemas import (
 from olive.market_data.models import MarketQuoteRecord
 from olive.market_data.schemas import MarketDataPolicy, QuoteInput
 from olive.market_data.service import MarketDataService
+from olive.operations.engine import OperationsEngine
+from olive.operations.schemas import (
+    AnomalyObservation,
+    HardeningCheck,
+    MlRecommendation,
+    MobileAction,
+    MobileControlRequest,
+)
 from olive.paper.oms import PaperOms
 from olive.paper.pipeline import PaperPipeline
 from olive.paper.sandbox import FirstVenueSandboxConnector
@@ -1042,6 +1050,59 @@ async def strategy_evolution() -> None:
     )
 
 
+async def roadmap_completion() -> None:
+    engine = OperationsEngine()
+    mobile = engine.authorize_mobile_control(
+        MobileControlRequest(
+            user_id="smoke-admin",
+            role="ADMIN",
+            mfa_verified=True,
+            action=MobileAction.EMERGENCY_HALT,
+        )
+    )
+    ml = engine.guard_ml_recommendation(
+        MlRecommendation(
+            model_key="slippage-risk",
+            model_version="1.0",
+            risk_multiplier=Decimal("0.5"),
+            confidence=Decimal("0.9"),
+            explanation=("elevated predicted slippage",),
+        ),
+        True,
+    )
+    anomaly = engine.detect_anomaly(
+        AnomalyObservation(
+            metric="slippage",
+            value=Decimal("5"),
+            baseline_mean=Decimal("1"),
+            baseline_stddev=Decimal("1"),
+            threshold_z=Decimal("3"),
+        )
+    )
+    names = (
+        "scalability",
+        "high-availability",
+        "disaster-recovery",
+        "secrets",
+        "resilience",
+        "observability",
+        "incident-response",
+        "penetration-test",
+        "compliance-review",
+    )
+    release = engine.approve_production_release(
+        [HardeningCheck(name=name, passed=True, evidence="smoke verified") for name in names]
+    )
+    if not mobile.permitted or not ml.accepted or ml.applied_multiplier > 1:
+        raise RuntimeError("mobile emergency control or ML guardrail failed")
+    if not anomaly.anomalous or not release.approved:
+        raise RuntimeError("anomaly detection or production hardening failed")
+    print(
+        "PASS Phases 38-40 roadmap completion: mobile=MFA_GUARDED, ML=RISK_SUBORDINATE, "
+        "anomaly=DETECTED, production=EVIDENCE_APPROVED"
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Olive Phase 2 live smoke test")
     parser.add_argument(
@@ -1063,6 +1124,7 @@ def main() -> int:
             "live-readiness",
             "controlled-production",
             "strategy-evolution",
+            "roadmap-completion",
         ),
     )
     parser.add_argument(
@@ -1102,6 +1164,8 @@ def main() -> int:
             asyncio.run(controlled_production())
         elif args.command == "strategy-evolution":
             asyncio.run(strategy_evolution())
+        elif args.command == "roadmap-completion":
+            asyncio.run(roadmap_completion())
         else:
             send(args.url)
     except Exception as exc:
