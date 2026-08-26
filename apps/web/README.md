@@ -1,4 +1,8 @@
-# Olive Admin Web Application
+# Olive Admin Dashboard
 
-The web application is intentionally not implemented in Phase 0. The approved stack is Next.js, React, and TypeScript; functional admin UI work begins in Phase 18 unless a later controlling requirement changes the phased plan.
+Private staging dashboard for monitoring Olive paper executions. Authentication is
+handled by a same-origin server route: the admin bearer token is stored only in an
+HttpOnly cookie and is never persisted in browser storage.
+
+Run locally with `npm install && npm run dev`, then open `http://localhost:3000`.
 
