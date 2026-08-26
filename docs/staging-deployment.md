@@ -1,8 +1,8 @@
 # Olive Staging Deployment
 
 This baseline runs Olive locally in the staging environment with persistent PostgreSQL and Redis
-data, internal-only database/cache networking, a localhost-bound API, automatic restarts,
-container privilege reduction, health checks, migrations and schema-drift verification.
+data, internal-only database/cache networking, localhost-bound API and admin dashboard, automatic
+restarts, container privilege reduction, health checks, migrations and schema-drift verification.
 
 ## Start staging on Windows
 
@@ -11,7 +11,12 @@ container privilege reduction, health checks, migrations and schema-drift verifi
 3. Start Docker Desktop.
 4. In PowerShell, run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`.
 5. Run `.\scripts\staging-up.ps1`.
-6. Confirm the script reports that staging is ready.
+6. Confirm the script reports that the API and admin dashboard are ready.
+7. Open `http://127.0.0.1:3000` and sign in with the value of `OLIVE_ADMIN_API_KEY` from your
+   private `.env.staging` file.
+
+The startup check confirms that anonymous dashboard API access is rejected, authenticates through
+the HttpOnly session gateway, and verifies that paper-execution monitoring data is available.
 
 ## Stop staging
 
