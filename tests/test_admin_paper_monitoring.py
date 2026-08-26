@@ -6,9 +6,11 @@ from decimal import Decimal
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from olive.config import Settings, get_settings
 from olive.db import Base, get_session
 from olive.gateway.models import (
     SignalDirection,
@@ -77,16 +79,23 @@ async def admin_client() -> AsyncIterator[AsyncClient]:
             yield session
 
     app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        admin_api_key=SecretStr("test-admin-key-that-is-at-least-32-characters")
+    )
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             yield client
     finally:
         app.dependency_overrides.pop(get_session, None)
+        app.dependency_overrides.pop(get_settings, None)
         await engine.dispose()
 
 
 async def test_admin_lists_paper_execution_with_summary(admin_client: AsyncClient) -> None:
-    response = await admin_client.get("/api/v1/admin/paper-executions")
+    response = await admin_client.get(
+        "/api/v1/admin/paper-executions",
+        headers={"Authorization": "Bearer test-admin-key-that-is-at-least-32-characters"},
+    )
     assert response.status_code == 200
     body = response.json()
     assert body["summary"] == {
@@ -103,5 +112,18 @@ async def test_admin_lists_paper_execution_with_summary(admin_client: AsyncClien
 
 
 async def test_admin_execution_limit_is_bounded(admin_client: AsyncClient) -> None:
-    response = await admin_client.get("/api/v1/admin/paper-executions?limit=201")
+    response = await admin_client.get(
+        "/api/v1/admin/paper-executions?limit=201",
+        headers={"Authorization": "Bearer test-admin-key-that-is-at-least-32-characters"},
+    )
     assert response.status_code == 422
+
+
+async def test_admin_endpoint_requires_bearer_token(admin_client: AsyncClient) -> None:
+    missing = await admin_client.get("/api/v1/admin/paper-executions")
+    invalid = await admin_client.get(
+        "/api/v1/admin/paper-executions",
+        headers={"Authorization": "Bearer wrong-token"},
+    )
+    assert missing.status_code == 401
+    assert invalid.status_code == 401
