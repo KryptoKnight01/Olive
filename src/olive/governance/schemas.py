@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -118,3 +119,46 @@ class AdminSnapshot(BaseModel):
     net_exposure: str
     open_risk: str
     margin_utilization: str
+
+
+class PaperExecutionMonitorItem(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    pipeline_run_id: uuid.UUID
+    created_at: datetime
+    signal_id: uuid.UUID
+    intake_id: uuid.UUID
+    signal_status: str
+    environment: str | None
+    direction: str | None
+    instrument_mapping_id: uuid.UUID | None
+    entry_price: Decimal | None
+    stop_price: Decimal | None
+    targets: list[str]
+    risk_decision: str | None
+    requested_risk_pct: Decimal | None
+    approved_risk_pct: Decimal | None
+    position_size: Decimal | None
+    order_id: uuid.UUID
+    order_status: str
+    protection_status: str
+    reconciled: bool
+    realized_pnl: Decimal
+
+
+class PaperExecutionSummary(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    total_executions: int
+    filled_executions: int
+    protected_executions: int
+    reconciled_executions: int
+    total_realized_pnl: Decimal
+    latest_execution_at: datetime | None
+
+
+class PaperExecutionMonitor(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    summary: PaperExecutionSummary
+    executions: list[PaperExecutionMonitorItem]
