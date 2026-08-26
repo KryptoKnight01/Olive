@@ -34,3 +34,11 @@ def test_signal_secret_is_redacted_from_settings_representation() -> None:
 def test_nonce_ttl_must_cover_freshness_window() -> None:
     with pytest.raises(ValidationError):
         Settings(signal_max_age_seconds=600, signal_nonce_ttl_seconds=300)
+
+
+def test_automatic_paper_execution_is_restricted_to_safe_environments() -> None:
+    with pytest.raises(ValidationError, match="paper or staging"):
+        Settings(app_env=AppEnvironment.PRODUCTION, paper_auto_execute=True)
+    assert Settings(
+        app_env=AppEnvironment.STAGING, paper_auto_execute=True
+    ).paper_auto_execute

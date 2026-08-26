@@ -71,7 +71,19 @@ class SignalPayload(GatewaySchema):
         return self
 
 
+class PaperExecutionResponse(BaseModel):
+    outcome: str
+    risk_decision: str
+    order_id: uuid.UUID | None = None
+    order_status: str | None = None
+    protection_status: str | None = None
+    reconciled: bool | None = None
+    realized_pnl: Decimal | None = None
+    reason: str | None = None
+
+
 class SignalIntakeResponse(BaseModel):
     intake_id: uuid.UUID
     signal_id: uuid.UUID
     status: SignalIntakeStatus
+    paper_execution: PaperExecutionResponse | None = None
