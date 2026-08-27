@@ -45,3 +45,25 @@ omitted, `expiry_seconds` is added to the supplied timestamp.
 The bridge must not be exposed directly from a personal workstation. Put a TLS-terminating,
 rate-limited tunnel or reverse proxy in front of the API and expose only the bridge route. Never
 place the HMAC secret or admin API key in TradingView.
+
+## Temporary paper-testing tunnel
+
+With staging already running, start the Docker-based testing tunnel:
+
+```powershell
+.\scripts\tradingview-tunnel-up.ps1
+```
+
+The command prints the complete HTTPS webhook URL. The tunnel first passes through a restricted
+Nginx ingress that accepts only `POST /api/v1/signals/tradingview-alert`, limits request size and
+rate, and returns `404` for every other route. The admin dashboard remains localhost-only.
+
+This uses a Cloudflare Quick Tunnel for testing. Its random `trycloudflare.com` URL changes whenever
+the tunnel restarts. Stop the public tunnel without stopping Olive staging by running:
+
+```powershell
+.\scripts\tradingview-tunnel-down.ps1
+```
+
+For continuous alerts, replace the Quick Tunnel with a named, account-managed tunnel and a stable
+hostname after the paper-alert flow has been verified.
