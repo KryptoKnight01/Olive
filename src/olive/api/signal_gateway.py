@@ -92,7 +92,8 @@ async def receive_tradingview_alert(
     if settings.app_env not in {AppEnvironment.PAPER, AppEnvironment.STAGING}:
         raise GatewayUnavailableError("TradingView alert bridge is limited to paper and staging")
     configured = settings.tradingview_webhook_secret
-    if configured is None or not configured.get_secret_value():
+    configured_value = configured.get_secret_value() if configured is not None else ""
+    if len(configured_value) < 32:
         raise GatewayUnavailableError("TradingView alert bridge is not configured")
     raw_body = await request.body()
     if len(raw_body) > settings.signal_max_payload_bytes:
@@ -103,16 +104,18 @@ async def receive_tradingview_alert(
     except (json.JSONDecodeError, KeyError, TypeError) as exc:
         raise GatewayAuthenticationError("invalid TradingView alert credentials") from exc
     if not isinstance(supplied, str) or not hmac.compare_digest(
-        supplied, configured.get_secret_value()
+        supplied, configured_value
     ):
         raise GatewayAuthenticationError("invalid TradingView alert credentials")
 
     external_signal_id = str(payload.get("signal_id", "")).strip()
     try:
         payload["signal_id"] = str(uuid.UUID(external_signal_id))
-    except ValueError:
+    except ValueError as exc:
         if not external_signal_id:
-            raise SignalIntakeError("signal_id is required", code="INVALID_PAYLOAD")
+            raise SignalIntakeError(
+                "signal_id is required", code="INVALID_PAYLOAD"
+            ) from exc
         payload["signal_id"] = str(
             uuid.uuid5(uuid.NAMESPACE_URL, f"olive:tradingview:{external_signal_id}")
         )

@@ -23,6 +23,7 @@ from olive.domain.models import (
     InstrumentType,
     RecordStatus,
     Strategy,
+    StrategyState,
     StrategyVersion,
     Underlying,
     Venue,
@@ -408,6 +409,11 @@ async def test_tradingview_alert_bridge_sanitizes_and_ingests(
         tradingview_webhook_secret="alert-secret-that-is-long-enough-for-testing",
     )
     app.dependency_overrides[get_gateway_settings] = lambda: settings
+    async with gateway_context.sessions() as session:
+        strategy_version = await session.scalar(select(StrategyVersion))
+        assert strategy_version is not None
+        strategy_version.state = StrategyState.STAGING
+        await session.commit()
     payload = valid_payload()
     payload["environment"] = "staging"
     payload["signal_id"] = "OLC-BTCUSD-2026-08-27-long"
@@ -421,7 +427,7 @@ async def test_tradingview_alert_bridge_sanitizes_and_ingests(
     finally:
         app.dependency_overrides.pop(get_gateway_settings, None)
 
-    assert response.status_code == 202
+    assert response.status_code == 202, response.text
     async with gateway_context.sessions() as session:
         record = await session.get(SignalIntakeRecord, uuid.UUID(response.json()["intake_id"]))
         assert record is not None
