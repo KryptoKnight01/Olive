@@ -352,13 +352,14 @@ async def seed() -> None:
 
 def make_payload() -> bytes:
     now = datetime.now(UTC)
+    settings = get_settings()
     payload: dict[str, Any] = {
         "schema_version": "1.0",
         "signal_id": str(uuid.uuid4()),
         "strategy_id": "OLC",
         "strategy_version": "1.0.0",
         "configuration_version": "smoke-1",
-        "environment": "development",
+        "environment": settings.app_env.value,
         "timestamp": now.isoformat(),
         "expiry": (now + timedelta(minutes=5)).isoformat(),
         "venue": "COINBASE",
