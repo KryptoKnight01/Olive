@@ -14,6 +14,7 @@ from sqlalchemy.pool import StaticPool
 
 from olive.api.signal_gateway import get_signal_authenticator
 from olive.config import AppEnvironment, Settings
+from olive.config import get_settings as get_gateway_settings
 from olive.db import Base, get_session
 from olive.domain.models import (
     Asset,
@@ -396,3 +397,54 @@ async def test_authentication_happens_before_payload_processing(
     async with gateway_context.sessions() as session:
         count = await session.scalar(select(func.count()).select_from(SignalIntakeRecord))
         assert count == 0
+
+
+async def test_tradingview_alert_bridge_sanitizes_and_ingests(
+    gateway_context: GatewayTestContext,
+) -> None:
+    settings = Settings(
+        app_env=AppEnvironment.STAGING,
+        signal_hmac_secret="hmac-secret-that-is-long-enough-for-testing",
+        tradingview_webhook_secret="alert-secret-that-is-long-enough-for-testing",
+    )
+    app.dependency_overrides[get_gateway_settings] = lambda: settings
+    payload = valid_payload()
+    payload["environment"] = "staging"
+    payload["signal_id"] = "OLC-BTCUSD-2026-08-27-long"
+    payload.pop("expiry")
+    payload["expiry_seconds"] = 300
+    payload["webhook_secret"] = "alert-secret-that-is-long-enough-for-testing"
+    try:
+        response = await gateway_context.client.post(
+            "/api/v1/signals/tradingview-alert", json=payload
+        )
+    finally:
+        app.dependency_overrides.pop(get_gateway_settings, None)
+
+    assert response.status_code == 202
+    async with gateway_context.sessions() as session:
+        record = await session.get(SignalIntakeRecord, uuid.UUID(response.json()["intake_id"]))
+        assert record is not None
+        assert record.raw_payload is not None
+        assert "webhook_secret" not in record.raw_payload
+
+
+async def test_tradingview_alert_bridge_rejects_invalid_secret(
+    gateway_context: GatewayTestContext,
+) -> None:
+    settings = Settings(
+        app_env=AppEnvironment.STAGING,
+        signal_hmac_secret="hmac-secret-that-is-long-enough-for-testing",
+        tradingview_webhook_secret="alert-secret-that-is-long-enough-for-testing",
+    )
+    app.dependency_overrides[get_gateway_settings] = lambda: settings
+    payload = valid_payload()
+    payload["webhook_secret"] = "wrong-secret-that-is-still-long-enough"
+    try:
+        response = await gateway_context.client.post(
+            "/api/v1/signals/tradingview-alert", json=payload
+        )
+    finally:
+        app.dependency_overrides.pop(get_gateway_settings, None)
+
+    assert response.status_code == 401
