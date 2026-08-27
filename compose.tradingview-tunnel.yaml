@@ -1,0 +1,33 @@
+services:
+  tradingview-ingress:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./deploy/tradingview-ingress.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    user: "101:101"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  tradingview-tunnel:
+    image: cloudflare/cloudflared:latest
+    command:
+      - tunnel
+      - --no-autoupdate
+      - --url
+      - http://tradingview-ingress:8080
+    depends_on:
+      - tradingview-ingress
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
