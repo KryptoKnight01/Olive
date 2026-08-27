@@ -6,6 +6,10 @@ configured. It runs only in `paper` or `staging`, removes the secret before pers
 routes the sanitized signal through the existing HMAC authentication, replay protection,
 validation, risk and automatic paper-execution services.
 
+The bridge returns its acceptance response as soon as authentication, replay protection and signal
+validation succeed. Automatic paper execution then continues in a background task so TradingView
+receives the response within its short webhook timeout window.
+
 Set a unique value of at least 32 characters in the private staging environment:
 
 ```text
