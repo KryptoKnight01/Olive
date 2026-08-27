@@ -3,13 +3,14 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, cast
 
-from fastapi import APIRouter, Depends, Header, Request, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, Request, status
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from olive.config import AppEnvironment, Settings, get_settings
 from olive.db import get_session
@@ -24,6 +25,7 @@ from olive.gateway.service import SignalIntakeService
 from olive.paper.orchestration import AutomaticPaperOrchestrator
 
 router = APIRouter(prefix="/api/v1/signals", tags=["signal-gateway"])
+logger = logging.getLogger(__name__)
 SessionDependency = Annotated[AsyncSession, Depends(get_session)]
 SettingsDependency = Annotated[Settings, Depends(get_settings)]
 
@@ -45,6 +47,16 @@ async def ingest_and_maybe_execute(
         )
         return response.model_copy(update={"paper_execution": paper_execution})
     return response
+
+
+async def execute_paper_in_background(
+    factory: async_sessionmaker[AsyncSession], settings: Settings, intake_id: uuid.UUID
+) -> None:
+    try:
+        async with factory() as session:
+            await AutomaticPaperOrchestrator(session, settings).execute(intake_id)
+    except Exception:
+        logger.exception("tradingview_background_paper_execution_failed")
 
 
 @router.post(
@@ -84,6 +96,7 @@ async def receive_tradingview_signal(
 )
 async def receive_tradingview_alert(
     request: Request,
+    background_tasks: BackgroundTasks,
     session: SessionDependency,
     settings: SettingsDependency,
     authenticator: AuthenticatorDependency,
@@ -148,4 +161,12 @@ async def receive_tradingview_alert(
             signature=f"sha256={signature}",
         ),
     )
-    return await ingest_and_maybe_execute(body, session, settings)
+    response = await SignalIntakeService(session, settings).ingest(body)
+    if settings.paper_auto_execute:
+        factory = cast(
+            async_sessionmaker[AsyncSession], request.app.state.session_factory
+        )
+        background_tasks.add_task(
+            execute_paper_in_background, factory, settings, response.intake_id
+        )
+    return response

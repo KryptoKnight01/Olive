@@ -73,12 +73,18 @@ async def gateway_context() -> AsyncIterator[GatewayTestContext]:
 
     app.dependency_overrides[get_session] = override_session
     app.dependency_overrides[get_signal_authenticator] = AllowAuthenticator
+    previous_factory = getattr(app.state, "session_factory", None)
+    app.state.session_factory = sessions
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             yield GatewayTestContext(client=client, sessions=sessions)
     finally:
         app.dependency_overrides.pop(get_session, None)
         app.dependency_overrides.pop(get_signal_authenticator, None)
+        if previous_factory is None:
+            del app.state.session_factory
+        else:
+            app.state.session_factory = previous_factory
         await engine.dispose()
 
 
@@ -407,6 +413,7 @@ async def test_tradingview_alert_bridge_sanitizes_and_ingests(
         app_env=AppEnvironment.STAGING,
         signal_hmac_secret="hmac-secret-that-is-long-enough-for-testing",
         tradingview_webhook_secret="alert-secret-that-is-long-enough-for-testing",
+        paper_auto_execute=True,
     )
     app.dependency_overrides[get_gateway_settings] = lambda: settings
     async with gateway_context.sessions() as session:
@@ -433,6 +440,12 @@ async def test_tradingview_alert_bridge_sanitizes_and_ingests(
         assert record is not None
         assert record.raw_payload is not None
         assert "webhook_secret" not in record.raw_payload
+        pipeline_run = await session.scalar(
+            select(PaperPipelineRunRecord).where(
+                PaperPipelineRunRecord.signal_id == uuid.UUID(response.json()["signal_id"])
+            )
+        )
+        assert pipeline_run is not None
 
 
 async def test_tradingview_alert_bridge_rejects_invalid_secret(
