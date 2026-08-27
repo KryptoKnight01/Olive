@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     dependency_timeout_seconds: float = Field(default=2.0, gt=0, le=30)
     signal_hmac_key_id: str = Field(default="tradingview-development", min_length=1)
     signal_hmac_secret: SecretStr | None = None
+    tradingview_webhook_secret: SecretStr | None = None
     signal_max_age_seconds: int = Field(default=300, gt=0, le=3600)
     signal_nonce_ttl_seconds: int = Field(default=900, gt=0, le=86400)
     signal_rate_limit: int = Field(default=60, gt=0, le=10000)
