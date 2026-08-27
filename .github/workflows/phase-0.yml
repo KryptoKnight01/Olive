@@ -34,6 +34,8 @@ jobs:
       OLIVE_SIGNAL_HMAC_SECRET: olive-phase2-ci-smoke-only
     steps:
       - uses: actions/checkout@v5
+      - name: Build the Olive admin dashboard
+        run: docker build --tag olive-admin-web:ci apps/web
       - name: Build and start the Olive stack
         run: docker compose up --build --detach --wait
       - name: Apply migrations
