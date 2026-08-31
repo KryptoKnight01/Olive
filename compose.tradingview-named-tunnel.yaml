@@ -1,0 +1,11 @@
+services:
+  tradingview-tunnel:
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN}
+    command:
+      - tunnel
+      - --no-autoupdate
+      - --protocol
+      - http2
+      - run
+
