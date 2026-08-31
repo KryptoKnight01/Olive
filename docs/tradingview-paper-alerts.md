@@ -69,5 +69,26 @@ the tunnel restarts. Stop the public tunnel without stopping Olive staging by ru
 .\scripts\tradingview-tunnel-down.ps1
 ```
 
-For continuous alerts, replace the Quick Tunnel with a named, account-managed tunnel and a stable
-hostname after the paper-alert flow has been verified.
+## Permanent Cloudflare hostname
+
+The Quick Tunnel above is intended for testing and receives a new URL when its
+container is recreated. For a stable TradingView webhook URL, create a remotely
+managed Cloudflare Tunnel and publish a hostname to the internal service
+`http://tradingview-ingress:8080`.
+
+Add the tunnel token and public hostname to the ignored `.env.staging` file:
+
+```dotenv
+CLOUDFLARE_TUNNEL_TOKEN=<secret tunnel token>
+OLIVE_TRADINGVIEW_PUBLIC_HOSTNAME=signals.example.com
+```
+
+Start the named tunnel:
+
+```powershell
+.\scripts\tradingview-named-tunnel-up.ps1
+```
+
+The named tunnel uses HTTP/2 for networks where QUIC/UDP is unavailable. The
+public hostname still reaches the route-restricted Nginx ingress: only the exact
+TradingView POST endpoint is proxied to Olive, and other paths return `404`.
