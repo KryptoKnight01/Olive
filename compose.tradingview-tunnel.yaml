@@ -27,6 +27,8 @@ services:
     command:
       - tunnel
       - --no-autoupdate
+      - --protocol
+      - http2
       - --url
       - http://tradingview-ingress:8080
     depends_on:
