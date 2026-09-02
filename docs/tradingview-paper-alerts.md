@@ -92,3 +92,18 @@ Start the named tunnel:
 The named tunnel uses HTTP/2 for networks where QUIC/UDP is unavailable. The
 public hostname still reaches the route-restricted Nginx ingress: only the exact
 TradingView POST endpoint is proxied to Olive, and other paths return `404`.
+
+## Controlled multi-strategy paper test
+
+After the named tunnel is healthy, run the staging-only multi-strategy acceptance test:
+
+```powershell
+.\scripts\tradingview-multistrategy-smoke.ps1
+```
+
+The test idempotently registers two additional paper strategies (`OLM` for mean reversion and
+`OLB` for breakout), sends one fresh signal for each through the configured permanent TradingView
+hostname, and waits for both executions to become filled, protected, and reconciled. Secrets are
+read from `.env.staging` inside the container and are never printed. Every signal uses a new ID and
+current UTC timestamp. The command refuses to run outside staging, and no live venue routing or
+credentials are enabled.
