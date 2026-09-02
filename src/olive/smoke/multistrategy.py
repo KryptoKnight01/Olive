@@ -16,7 +16,7 @@ from sqlalchemy import select
 
 from olive.config import AppEnvironment, get_settings
 from olive.db import create_database_engine, create_session_factory
-from olive.domain.models import Strategy, StrategyVersion
+from olive.domain.models import Strategy, StrategyState, StrategyVersion
 from olive.paper.models import PaperPipelineRunRecord
 from olive.risk.models import SingleTradeRiskPolicyRecord
 from olive.validation.models import SignalValidationPolicy
@@ -59,6 +59,7 @@ async def seed_strategies() -> None:
                     )
                 )
                 if version is not None:
+                    version.state = StrategyState.STAGING
                     continue
 
                 version = StrategyVersion(
@@ -66,6 +67,7 @@ async def seed_strategies() -> None:
                     version="1.0.0",
                     code_hash=definition.code_hash,
                     configuration_version="smoke-1",
+                    state=StrategyState.STAGING,
                 )
                 session.add(version)
                 await session.flush()
