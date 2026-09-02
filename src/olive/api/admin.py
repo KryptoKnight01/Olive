@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from olive.db import get_session
+from olive.domain.models import Strategy, StrategyVersion
 from olive.gateway.models import SignalIntakeRecord
 from olive.governance.auth import AdminViewerDependency
 from olive.governance.models import KillSwitchRecord
@@ -15,6 +16,7 @@ from olive.governance.schemas import (
     PaperExecutionMonitor,
     PaperExecutionMonitorItem,
     PaperExecutionSummary,
+    StrategyPaperSummary,
 )
 from olive.paper.models import PaperOrderRecord, PaperPipelineRunRecord, PaperPositionRecord
 from olive.risk.models import TradeRiskDecisionRecord
@@ -93,6 +95,34 @@ async def paper_executions(
             )
         )
     ).one()
+    strategy_rows = (
+        await session.execute(
+            select(
+                Strategy.code,
+                StrategyVersion.version,
+                func.count(PaperPipelineRunRecord.id),
+                func.count(PaperPipelineRunRecord.id).filter(
+                    PaperPipelineRunRecord.order_status == "FILLED"
+                ),
+                func.count(PaperPipelineRunRecord.id).filter(
+                    PaperPipelineRunRecord.protection_status == "PROTECTED"
+                ),
+                func.count(PaperPipelineRunRecord.id).filter(
+                    PaperPipelineRunRecord.reconciled.is_(True)
+                ),
+                func.coalesce(func.sum(PaperPipelineRunRecord.realized_pnl), 0),
+                func.max(PaperPipelineRunRecord.created_at),
+            )
+            .join(
+                SignalIntakeRecord,
+                SignalIntakeRecord.signal_id == PaperPipelineRunRecord.signal_id,
+            )
+            .join(StrategyVersion, StrategyVersion.id == SignalIntakeRecord.strategy_version_id)
+            .join(Strategy, Strategy.id == StrategyVersion.strategy_id)
+            .group_by(Strategy.code, StrategyVersion.version)
+            .order_by(Strategy.code, StrategyVersion.version)
+        )
+    ).all()
     return PaperExecutionMonitor(
         summary=PaperExecutionSummary(
             total_executions=summary_row[0],
@@ -102,6 +132,19 @@ async def paper_executions(
             total_realized_pnl=summary_row[4],
             latest_execution_at=summary_row[5],
         ),
+        strategies=[
+            StrategyPaperSummary(
+                strategy_code=row[0],
+                strategy_version=row[1],
+                total_executions=row[2],
+                filled_executions=row[3],
+                protected_executions=row[4],
+                reconciled_executions=row[5],
+                total_realized_pnl=row[6],
+                latest_execution_at=row[7],
+            )
+            for row in strategy_rows
+        ],
         executions=[
             PaperExecutionMonitorItem(
                 pipeline_run_id=run.id,

@@ -12,6 +12,7 @@ from sqlalchemy.pool import StaticPool
 
 from olive.config import Settings, get_settings
 from olive.db import Base, get_session
+from olive.domain.models import Strategy, StrategyState, StrategyVersion
 from olive.gateway.models import (
     SignalDirection,
     SignalEnvironment,
@@ -35,12 +36,25 @@ async def admin_client() -> AsyncIterator[AsyncClient]:
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     signal_id = uuid.uuid4()
     async with sessions() as session:
+        strategy = Strategy(code="OLM", name="Olive Mean Reversion")
+        session.add(strategy)
+        await session.flush()
+        version = StrategyVersion(
+            strategy_id=strategy.id,
+            version="1.0.0",
+            code_hash="1" * 64,
+            configuration_version="smoke-1",
+            state=StrategyState.STAGING,
+        )
+        session.add(version)
+        await session.flush()
         intake = SignalIntakeRecord(
             signal_id=signal_id,
             status=SignalIntakeStatus.RISK_REVIEW,
             payload_hash="a" * 64,
             environment=SignalEnvironment.STAGING,
             direction=SignalDirection.LONG,
+            strategy_version_id=version.id,
             entry_price=Decimal("65000"),
             stop_price=Decimal("64000"),
             targets=["67000", "68000"],
@@ -109,6 +123,18 @@ async def test_admin_lists_paper_execution_with_summary(admin_client: AsyncClien
     assert body["executions"][0]["risk_decision"] == "APPROVED"
     assert body["executions"][0]["order_status"] == "FILLED"
     assert body["executions"][0]["protection_status"] == "PROTECTED"
+    assert body["strategies"] == [
+        {
+            "strategy_code": "OLM",
+            "strategy_version": "1.0.0",
+            "total_executions": 1,
+            "filled_executions": 1,
+            "protected_executions": 1,
+            "reconciled_executions": 1,
+            "total_realized_pnl": "125.500000000000",
+            "latest_execution_at": body["strategies"][0]["latest_execution_at"],
+        }
+    ]
 
 
 async def test_admin_execution_limit_is_bounded(admin_client: AsyncClient) -> None:

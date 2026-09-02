@@ -157,8 +157,22 @@ class PaperExecutionSummary(BaseModel):
     latest_execution_at: datetime | None
 
 
+class StrategyPaperSummary(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    strategy_code: str
+    strategy_version: str
+    total_executions: int
+    filled_executions: int
+    protected_executions: int
+    reconciled_executions: int
+    total_realized_pnl: Decimal
+    latest_execution_at: datetime | None
+
+
 class PaperExecutionMonitor(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     summary: PaperExecutionSummary
+    strategies: list[StrategyPaperSummary]
     executions: list[PaperExecutionMonitorItem]
