@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import uuid
 from datetime import UTC, datetime
 
+from olive.gateway.schemas import SignalPayload
 from olive.smoke.multistrategy import PAPER_STRATEGIES, make_alert_payload
 
 
@@ -18,3 +20,10 @@ def test_multistrategy_payloads_are_fresh_unique_and_valid() -> None:
     assert all(payload["environment"] == "staging" for payload in payloads)
     assert all(payload["expiry_seconds"] == 300 for payload in payloads)
     assert all(payload["webhook_secret"] == "s" * 32 for payload in payloads)
+
+    for payload in payloads:
+        sanitized = payload | {"expiry": "2026-09-02T12:05:00+00:00"}
+        sanitized.pop("webhook_secret")
+        sanitized.pop("expiry_seconds")
+        sanitized["signal_id"] = uuid.uuid5(uuid.NAMESPACE_URL, sanitized["signal_id"])
+        SignalPayload.model_validate(sanitized)
