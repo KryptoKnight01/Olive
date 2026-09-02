@@ -127,7 +127,7 @@ def make_alert_payload(
         "timeframe": "15m",
         "setup_score": strategy.setup_score,
         "regime": "NORMAL",
-        "metadata": {"test": "multi-strategy-paper", "confidence": "0.75"},
+        "metadata": {"confidence": "0.75"},
     }
     return json.dumps(payload, separators=(",", ":")).encode(), external_signal_id
 
