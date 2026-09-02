@@ -2,42 +2,25 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
-type Execution = Record<string, unknown>;
-type Dashboard = { summary?: Record<string, unknown>; executions?: Execution[] };
-
-const show = (value: unknown, fallback = "—") => value === null || value === undefined ? fallback : String(value);
+type Item = Record<string, unknown>;
+type Dashboard = { summary?: Item; strategies?: Item[]; executions?: Item[] };
+const show = (value: unknown, fallback = "—") => value == null ? fallback : String(value);
 
 export default function Home() {
   const [data, setData] = useState<Dashboard | null>(null);
   const [signedOut, setSignedOut] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    const response = await fetch("/api/dashboard", { cache: "no-store" });
-    if (response.ok) { setData(await response.json()); setSignedOut(false); }
-    else { setData(null); setSignedOut(true); }
-    setLoading(false);
-  }, []);
-
+  const refresh = useCallback(async () => { setLoading(true); const response = await fetch("/api/dashboard", { cache: "no-store" }); if (response.ok) { setData(await response.json()); setSignedOut(false); } else { setData(null); setSignedOut(true); } setLoading(false); }, []);
   useEffect(() => { void refresh(); }, [refresh]);
-
-  async function signIn(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setMessage("Checking access…");
-    const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: form.get("token") }) });
-    if (!response.ok) { const body = await response.json(); setMessage(body.detail ?? "Unable to sign in."); return; }
-    event.currentTarget.reset(); setMessage(""); await refresh();
-  }
-
+  async function signIn(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setMessage("Checking access…"); const form = new FormData(event.currentTarget); const response = await fetch("/api/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: form.get("token") }) }); if (!response.ok) { const body = await response.json(); setMessage(body.detail ?? "Unable to sign in."); return; } event.currentTarget.reset(); setMessage(""); await refresh(); }
   async function signOut() { await fetch("/api/session", { method: "DELETE" }); setData(null); setSignedOut(true); }
-
   if (loading && !data) return <main className="center"><div className="pulse">O</div><p>Connecting to Olive…</p></main>;
   if (signedOut || !data) return <main className="login-shell"><section className="login-card"><div className="brand"><span>O</span><div><strong>OLIVE</strong><small>TRADING PLATFORM</small></div></div><p className="eyebrow">PRIVATE STAGING</p><h1>Command center access</h1><p className="muted">Monitor paper executions, protection status, and operational readiness.</p><form onSubmit={signIn}><label htmlFor="token">Admin access token</label><input id="token" name="token" type="password" autoComplete="current-password" placeholder="Enter staging token" required/><button type="submit">Enter command center</button></form>{message && <p className="error">{message}</p>}<p className="security">Protected session · token is kept in a secure HttpOnly cookie</p></section></main>;
 
   const summary = data.summary ?? {};
+  const strategies = data.strategies ?? [];
   const executions = data.executions ?? [];
   const cards: Array<[string, unknown]> = [["Executions", summary.total_executions], ["Filled", summary.filled_executions], ["Protected", summary.protected_executions], ["Reconciled", summary.reconciled_executions], ["Paper P&L", summary.total_realized_pnl]];
-  return <main className="dashboard"><header><div className="brand"><span>O</span><div><strong>OLIVE</strong><small>COMMAND CENTER</small></div></div><div className="actions"><span className="status">STAGING READY</span><button className="ghost" onClick={() => void refresh()}>Refresh</button><button className="ghost" onClick={() => void signOut()}>Sign out</button></div></header><section className="hero"><p className="eyebrow">PAPER OPERATIONS</p><h1>Execution overview</h1><p className="muted">Live routing is disarmed. All activity shown is simulated.</p></section><section className="cards">{cards.map(([label, value]) => <article key={String(label)}><small>{label}</small><strong>{label === "Paper P&L" ? `$${Number(value ?? 0).toFixed(2)}` : show(value, "0")}</strong></article>)}</section><section className="ledger"><div className="section-title"><div><p className="eyebrow">EXECUTION LEDGER</p><h2>Recent paper trades</h2></div><span>{executions.length} records</span></div><div className="table-wrap"><table><thead><tr><th>Signal / Time</th><th>Trade</th><th>Risk</th><th>Order</th><th>Protection</th><th>P&amp;L</th></tr></thead><tbody>{executions.length ? executions.map((item, i) => <tr key={show(item.pipeline_run_id, String(i))}><td><b>{show(item.signal_id)}</b><small>{show(item.created_at)}</small></td><td><b>{show(item.direction)}</b><small>Entry {show(item.entry_price)} · Stop {show(item.stop_price)}</small></td><td><b>{show(item.risk_decision)}</b><small>{show(item.approved_risk_pct, show(item.requested_risk_pct))}% · size {show(item.position_size)}</small></td><td><b>{show(item.order_status)}</b><small>{show(item.environment, "paper")}</small></td><td><b>{item.protection_status === "PROTECTED" ? "Protected" : show(item.protection_status, "Pending")}</b><small>{item.reconciled ? "Reconciled" : "Unreconciled"}</small></td><td className="pnl">${Number(item.realized_pnl ?? 0).toFixed(2)}</td></tr>) : <tr><td colSpan={6} className="empty">No paper executions yet. The staging pipeline is ready for a signed TradingView signal.</td></tr>}</tbody></table></div></section></main>;
+  return <main className="dashboard"><header><div className="brand"><span>O</span><div><strong>OLIVE</strong><small>COMMAND CENTER</small></div></div><div className="actions"><span className="status">STAGING READY</span><button className="ghost" onClick={() => void refresh()}>Refresh</button><button className="ghost" onClick={() => void signOut()}>Sign out</button></div></header><section className="hero"><p className="eyebrow">PAPER OPERATIONS</p><h1>Execution overview</h1><p className="muted">Live routing is disarmed. All activity shown is simulated.</p></section><section className="cards">{cards.map(([label, value]) => <article key={label}><small>{label}</small><strong>{label === "Paper P&L" ? `$${Number(value ?? 0).toFixed(2)}` : show(value, "0")}</strong></article>)}</section><section className="strategy-grid"><div className="section-title"><div><p className="eyebrow">OBSERVATION WINDOW</p><h2>Strategy performance</h2></div><span>{strategies.length} strategies</span></div><div className="strategy-cards">{strategies.map((item, i) => <article key={`${show(item.strategy_code)}-${show(item.strategy_version, String(i))}`}><div><strong>{show(item.strategy_code)}</strong><small>v{show(item.strategy_version)}</small></div><dl><div><dt>Executions</dt><dd>{show(item.total_executions, "0")}</dd></div><div><dt>Filled</dt><dd>{show(item.filled_executions, "0")}</dd></div><div><dt>Protected</dt><dd>{show(item.protected_executions, "0")}</dd></div><div><dt>Reconciled</dt><dd>{show(item.reconciled_executions, "0")}</dd></div><div><dt>Paper P&amp;L</dt><dd>${Number(item.total_realized_pnl ?? 0).toFixed(2)}</dd></div></dl><small>Latest: {show(item.latest_execution_at)}</small></article>)}</div></section><section className="ledger"><div className="section-title"><div><p className="eyebrow">EXECUTION LEDGER</p><h2>Recent paper trades</h2></div><span>{executions.length} records</span></div><div className="table-wrap"><table><thead><tr><th>Signal / Time</th><th>Trade</th><th>Risk</th><th>Order</th><th>Protection</th><th>P&amp;L</th></tr></thead><tbody>{executions.length ? executions.map((item, i) => <tr key={show(item.pipeline_run_id, String(i))}><td><b>{show(item.signal_id)}</b><small>{show(item.created_at)}</small></td><td><b>{show(item.direction)}</b><small>Entry {show(item.entry_price)} · Stop {show(item.stop_price)}</small></td><td><b>{show(item.risk_decision)}</b><small>{show(item.approved_risk_pct, show(item.requested_risk_pct))}% · size {show(item.position_size)}</small></td><td><b>{show(item.order_status)}</b><small>{show(item.environment, "paper")}</small></td><td><b>{item.protection_status === "PROTECTED" ? "Protected" : show(item.protection_status, "Pending")}</b><small>{item.reconciled ? "Reconciled" : "Unreconciled"}</small></td><td className="pnl">${Number(item.realized_pnl ?? 0).toFixed(2)}</td></tr>) : <tr><td colSpan={6} className="empty">No paper executions yet. The staging pipeline is ready for a signed TradingView signal.</td></tr>}</tbody></table></div></section></main>;
 }
