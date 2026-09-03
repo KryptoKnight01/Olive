@@ -168,6 +168,13 @@ class StrategyPaperSummary(BaseModel):
     reconciled_executions: int
     total_realized_pnl: Decimal
     latest_execution_at: datetime | None
+    winning_executions: int
+    win_rate_pct: Decimal
+    profit_factor: Decimal | None
+    average_r: Decimal
+    max_drawdown_pct: Decimal
+    health_status: str
+    health_breaches: list[str]
 
 
 class PaperExecutionMonitor(BaseModel):
