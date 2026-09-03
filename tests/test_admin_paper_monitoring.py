@@ -133,6 +133,13 @@ async def test_admin_lists_paper_execution_with_summary(admin_client: AsyncClien
             "reconciled_executions": 1,
             "total_realized_pnl": "125.500000000000",
             "latest_execution_at": body["strategies"][0]["latest_execution_at"],
+            "winning_executions": 1,
+            "win_rate_pct": "100",
+            "profit_factor": None,
+            "average_r": "0.1255",
+            "max_drawdown_pct": "0",
+            "health_status": "YELLOW",
+            "health_breaches": ["INSUFFICIENT_SAMPLE"],
         }
     ]
 
