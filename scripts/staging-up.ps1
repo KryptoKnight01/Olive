@@ -3,6 +3,13 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# Docker BuildKit writes normal progress messages to stderr. PowerShell 7 can
+# promote those messages to terminating errors when ErrorActionPreference is
+# Stop, preventing us from checking Docker's actual exit code below.
+if (Test-Path variable:PSNativeCommandUseErrorActionPreference) {
+    $PSNativeCommandUseErrorActionPreference = $false
+}
 $ComposeFile = "compose.staging.yaml"
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
