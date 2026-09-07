@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated, Any
 
@@ -8,6 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from olive.config import Settings, get_settings
 from olive.db import get_session
 from olive.domain.models import Strategy, StrategyVersion
 from olive.gateway.models import SignalIntakeRecord
@@ -18,6 +20,7 @@ from olive.governance.schemas import (
     PaperExecutionMonitor,
     PaperExecutionMonitorItem,
     PaperExecutionSummary,
+    PaperObservationGate,
     StrategyPaperSummary,
 )
 from olive.paper.models import PaperOrderRecord, PaperPipelineRunRecord, PaperPositionRecord
@@ -27,14 +30,16 @@ from olive.risk.models import TradeRiskDecisionRecord
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 SessionDependency = Annotated[AsyncSession, Depends(get_session)]
+SettingsDependency = Annotated[Settings, Depends(get_settings)]
 
 
-def _strategy_summaries(rows: list[Any]) -> list[StrategyPaperSummary]:
+def _strategy_summaries(
+    rows: list[Any], thresholds: PerformanceThresholds
+) -> list[StrategyPaperSummary]:
     grouped: dict[tuple[str, str], list[Any]] = defaultdict(list)
     for strategy_code, strategy_version, run, intake, risk in rows:
         grouped[(strategy_code, strategy_version)].append((run, intake, risk))
 
-    thresholds = PerformanceThresholds()
     engine = LiveReadinessEngine()
     summaries: list[StrategyPaperSummary] = []
     for (code, version), trades in sorted(grouped.items()):
@@ -144,6 +149,7 @@ async def command_center(
 async def paper_executions(
     session: SessionDependency,
     _principal: AdminViewerDependency,
+    settings: SettingsDependency,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> PaperExecutionMonitor:
     rows = (
@@ -175,6 +181,7 @@ async def paper_executions(
                     PaperPipelineRunRecord.reconciled.is_(True)
                 ),
                 func.coalesce(func.sum(PaperPipelineRunRecord.realized_pnl), 0),
+                func.min(PaperPipelineRunRecord.created_at),
                 func.max(PaperPipelineRunRecord.created_at),
             )
         )
@@ -201,6 +208,33 @@ async def paper_executions(
             .order_by(Strategy.code, StrategyVersion.version, PaperPipelineRunRecord.created_at)
         )
     ).all()
+    thresholds = PerformanceThresholds(min_trades=settings.paper_observation_min_trades)
+    strategies = _strategy_summaries(list(performance_rows), thresholds)
+    observation_started_at = summary_row[5]
+    observation_latest_at = summary_row[6]
+    observed_days = 0
+    if observation_started_at is not None:
+        started_at = observation_started_at
+        if started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=UTC)
+        observed_days = max(0, (datetime.now(UTC) - started_at).days)
+    strategies_meeting_sample = sum(
+        item.total_executions >= settings.paper_observation_min_trades for item in strategies
+    )
+    blockers: list[str] = []
+    if not strategies:
+        blockers.append("NO_STRATEGY_EVIDENCE")
+    if observed_days < settings.paper_observation_days:
+        blockers.append("OBSERVATION_PERIOD_INCOMPLETE")
+    if strategies_meeting_sample < len(strategies) or not strategies:
+        blockers.append("STRATEGY_SAMPLE_INCOMPLETE")
+    if any(item.health_status != "GREEN" for item in strategies):
+        blockers.append("STRATEGY_HEALTH_NOT_GREEN")
+    if summary_row[0] != summary_row[1] or summary_row[0] != summary_row[2]:
+        blockers.append("EXECUTION_PROTECTION_INCOMPLETE")
+    if summary_row[0] != summary_row[3]:
+        blockers.append("RECONCILIATION_INCOMPLETE")
+    ready_for_review = not blockers
     return PaperExecutionMonitor(
         summary=PaperExecutionSummary(
             total_executions=summary_row[0],
@@ -208,9 +242,21 @@ async def paper_executions(
             protected_executions=summary_row[2],
             reconciled_executions=summary_row[3],
             total_realized_pnl=summary_row[4],
-            latest_execution_at=summary_row[5],
+            latest_execution_at=observation_latest_at,
         ),
-        strategies=_strategy_summaries(list(performance_rows)),
+        observation_gate=PaperObservationGate(
+            status="READY_FOR_REVIEW" if ready_for_review else "COLLECTING_EVIDENCE",
+            ready_for_readiness_review=ready_for_review,
+            observation_started_at=observation_started_at,
+            observation_latest_at=observation_latest_at,
+            observed_days=observed_days,
+            required_days=settings.paper_observation_days,
+            required_trades_per_strategy=settings.paper_observation_min_trades,
+            strategies_meeting_sample=strategies_meeting_sample,
+            total_strategies=len(strategies),
+            blockers=blockers,
+        ),
+        strategies=strategies,
         executions=[
             PaperExecutionMonitorItem(
                 pipeline_run_id=run.id,

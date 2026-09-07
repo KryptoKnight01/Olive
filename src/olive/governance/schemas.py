@@ -177,9 +177,26 @@ class StrategyPaperSummary(BaseModel):
     health_breaches: list[str]
 
 
+class PaperObservationGate(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    status: str
+    ready_for_readiness_review: bool
+    observation_started_at: datetime | None
+    observation_latest_at: datetime | None
+    observed_days: int
+    required_days: int
+    required_trades_per_strategy: int
+    strategies_meeting_sample: int
+    total_strategies: int
+    blockers: list[str]
+    live_routing_armed: bool = False
+
+
 class PaperExecutionMonitor(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     summary: PaperExecutionSummary
+    observation_gate: PaperObservationGate
     strategies: list[StrategyPaperSummary]
     executions: list[PaperExecutionMonitorItem]
