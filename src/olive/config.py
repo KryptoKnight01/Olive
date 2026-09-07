@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     paper_available_margin: Decimal = Field(default=Decimal("50000"), ge=0)
     paper_requested_risk_pct: Decimal = Field(default=Decimal("1"), gt=0, le=100)
     paper_fee_rate: Decimal = Field(default=Decimal("0.001"), ge=0, le=1)
+    paper_observation_days: int = Field(default=30, ge=1, le=365)
+    paper_observation_min_trades: int = Field(default=20, ge=1, le=100000)
     admin_api_key: SecretStr | None = Field(default=None, min_length=32)
     admin_api_role: Role = Role.VIEWER
 

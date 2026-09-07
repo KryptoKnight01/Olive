@@ -120,6 +120,15 @@ async def test_admin_lists_paper_execution_with_summary(admin_client: AsyncClien
         "total_realized_pnl": "125.500000000000",
         "latest_execution_at": body["summary"]["latest_execution_at"],
     }
+    assert body["observation_gate"]["status"] == "COLLECTING_EVIDENCE"
+    assert body["observation_gate"]["ready_for_readiness_review"] is False
+    assert body["observation_gate"]["required_days"] == 30
+    assert body["observation_gate"]["required_trades_per_strategy"] == 20
+    assert body["observation_gate"]["strategies_meeting_sample"] == 0
+    assert body["observation_gate"]["total_strategies"] == 1
+    assert body["observation_gate"]["live_routing_armed"] is False
+    assert "OBSERVATION_PERIOD_INCOMPLETE" in body["observation_gate"]["blockers"]
+    assert "STRATEGY_SAMPLE_INCOMPLETE" in body["observation_gate"]["blockers"]
     assert body["executions"][0]["risk_decision"] == "APPROVED"
     assert body["executions"][0]["order_status"] == "FILLED"
     assert body["executions"][0]["protection_status"] == "PROTECTED"

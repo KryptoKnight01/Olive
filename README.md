@@ -17,6 +17,9 @@ ML guardrails, anomaly detection, and evidence-based production release hardenin
 The post-roadmap staging baseline is documented in `docs/staging-deployment.md` and started on
 Windows with `scripts/staging-up.ps1`. It remains live-trading-disarmed by design.
 
+The command center also exposes a configurable, evidence-only paper observation gate. See
+`docs/paper-observation-gate.md`. The gate cannot arm live routing.
+
 Olive is a risk-first trading platform built in acceptance-gated phases. The current Phase 4 implementation securely receives, validates, and sizes candidate signals, but cannot place orders.
 
 ## Phase 0 capabilities
