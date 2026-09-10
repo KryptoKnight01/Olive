@@ -128,7 +128,7 @@ def _instrument_summaries(
         )
 
     summaries: list[InstrumentPaperSummary] = []
-    for (code, version, venue, symbol, instrument), trades in sorted(grouped.items()):
+    for (_code, _version, venue, symbol, instrument), trades in sorted(grouped.items()):
         strategy_summary = _strategy_summaries(trades, thresholds)[0]
         summaries.append(
             InstrumentPaperSummary(
