@@ -20,11 +20,13 @@ The TradingView alert body must be valid JSON and include `webhook_secret`. A st
 identifier is accepted and converted deterministically to Olive's UUID format. When `expiry` is
 omitted, `expiry_seconds` is added to the supplied timestamp.
 
-For Binance's TradingView `BTCUSDT.P` chart, register the paper-analysis mapping once with
-`./scripts/register-binance-paper.ps1`, then use `BINANCE` as the venue and `BTCUSDT` as the
-instrument. The canonical Olive instrument is `BTC-USDT-PERP`; the alert carries Binance's venue
-symbol because intake resolves venue and symbol together. Registration does not configure venue
-credentials or enable live routing.
+For Binance perpetual charts, register the paper-analysis mappings once with
+`./scripts/register-binance-paper.ps1`. The supported TradingView charts and Olive alert symbols
+are `BTCUSDT.P` / `BTCUSDT`, `BNBUSDT.P` / `BNBUSDT`, `SOLUSDT.P` / `SOLUSDT`, and `XRPUSDT.P` /
+`XRPUSDT`. Use `BINANCE` as the venue. Each chart requires its own strategy instance and alert with
+the matching symbol. Canonical Olive instrument codes end in `-USDT-PERP`; alerts carry Binance's
+venue symbols because intake resolves venue and symbol together. Registration does not configure
+venue credentials or enable live routing.
 
 ```json
 {
