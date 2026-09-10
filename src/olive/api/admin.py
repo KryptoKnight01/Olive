@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from olive.config import Settings, get_settings
 from olive.db import get_session
-from olive.domain.models import Strategy, StrategyVersion
+from olive.domain.models import Instrument, Strategy, StrategyVersion, Venue, VenueInstrument
 from olive.gateway.models import SignalIntakeRecord
 from olive.governance.auth import AdminViewerDependency
 from olive.governance.models import KillSwitchRecord
@@ -21,6 +21,7 @@ from olive.governance.schemas import (
     PaperExecutionMonitorItem,
     PaperExecutionSummary,
     PaperObservationGate,
+    InstrumentPaperSummary,
     StrategyPaperSummary,
 )
 from olive.paper.models import PaperOrderRecord, PaperPipelineRunRecord, PaperPositionRecord
@@ -37,7 +38,7 @@ def _strategy_summaries(
     rows: list[Any], thresholds: PerformanceThresholds
 ) -> list[StrategyPaperSummary]:
     grouped: dict[tuple[str, str], list[Any]] = defaultdict(list)
-    for strategy_code, strategy_version, run, intake, risk in rows:
+    for strategy_code, strategy_version, run, intake, risk, *_ in rows:
         grouped[(strategy_code, strategy_version)].append((run, intake, risk))
 
     engine = LiveReadinessEngine()
@@ -114,6 +115,31 @@ def _strategy_summaries(
     return summaries
 
 
+def _instrument_summaries(
+    rows: list[Any], thresholds: PerformanceThresholds
+) -> list[InstrumentPaperSummary]:
+    grouped: dict[tuple[str, str, str, str, str], list[Any]] = defaultdict(list)
+    for code, version, run, intake, risk, venue, symbol, instrument in rows:
+        if venue is None or symbol is None or instrument is None:
+            continue
+        grouped[(code, version, venue, symbol, instrument)].append(
+            (code, version, run, intake, risk)
+        )
+
+    summaries: list[InstrumentPaperSummary] = []
+    for (code, version, venue, symbol, instrument), trades in sorted(grouped.items()):
+        strategy_summary = _strategy_summaries(trades, thresholds)[0]
+        summaries.append(
+            InstrumentPaperSummary(
+                **strategy_summary.model_dump(),
+                venue_code=venue,
+                venue_symbol=symbol,
+                instrument_code=instrument,
+            )
+        )
+    return summaries
+
+
 @router.get("/command-center", response_model=AdminSnapshot)
 async def command_center(
     session: SessionDependency, _principal: AdminViewerDependency
@@ -154,7 +180,14 @@ async def paper_executions(
 ) -> PaperExecutionMonitor:
     rows = (
         await session.execute(
-            select(PaperPipelineRunRecord, SignalIntakeRecord, TradeRiskDecisionRecord)
+            select(
+                PaperPipelineRunRecord,
+                SignalIntakeRecord,
+                TradeRiskDecisionRecord,
+                Venue.code,
+                VenueInstrument.symbol,
+                Instrument.code,
+            )
             .join(
                 SignalIntakeRecord,
                 SignalIntakeRecord.signal_id == PaperPipelineRunRecord.signal_id,
@@ -163,6 +196,12 @@ async def paper_executions(
                 TradeRiskDecisionRecord,
                 TradeRiskDecisionRecord.signal_intake_id == SignalIntakeRecord.id,
             )
+            .outerjoin(
+                VenueInstrument,
+                VenueInstrument.id == SignalIntakeRecord.venue_instrument_id,
+            )
+            .outerjoin(Venue, Venue.id == VenueInstrument.venue_id)
+            .outerjoin(Instrument, Instrument.id == VenueInstrument.instrument_id)
             .order_by(PaperPipelineRunRecord.created_at.desc())
             .limit(limit)
         )
@@ -194,6 +233,9 @@ async def paper_executions(
                 PaperPipelineRunRecord,
                 SignalIntakeRecord,
                 TradeRiskDecisionRecord,
+                Venue.code,
+                VenueInstrument.symbol,
+                Instrument.code,
             )
             .join(
                 SignalIntakeRecord,
@@ -205,11 +247,18 @@ async def paper_executions(
                 TradeRiskDecisionRecord,
                 TradeRiskDecisionRecord.signal_intake_id == SignalIntakeRecord.id,
             )
+            .outerjoin(
+                VenueInstrument,
+                VenueInstrument.id == SignalIntakeRecord.venue_instrument_id,
+            )
+            .outerjoin(Venue, Venue.id == VenueInstrument.venue_id)
+            .outerjoin(Instrument, Instrument.id == VenueInstrument.instrument_id)
             .order_by(Strategy.code, StrategyVersion.version, PaperPipelineRunRecord.created_at)
         )
     ).all()
     thresholds = PerformanceThresholds(min_trades=settings.paper_observation_min_trades)
     strategies = _strategy_summaries(list(performance_rows), thresholds)
+    instruments = _instrument_summaries(list(performance_rows), thresholds)
     observation_started_at = summary_row[5]
     observation_latest_at = summary_row[6]
     observed_days = 0
@@ -221,6 +270,9 @@ async def paper_executions(
     strategies_meeting_sample = sum(
         item.total_executions >= settings.paper_observation_min_trades for item in strategies
     )
+    instruments_meeting_sample = sum(
+        item.total_executions >= settings.paper_observation_min_trades for item in instruments
+    )
     blockers: list[str] = []
     if not strategies:
         blockers.append("NO_STRATEGY_EVIDENCE")
@@ -228,6 +280,8 @@ async def paper_executions(
         blockers.append("OBSERVATION_PERIOD_INCOMPLETE")
     if strategies_meeting_sample < len(strategies) or not strategies:
         blockers.append("STRATEGY_SAMPLE_INCOMPLETE")
+    if instruments and instruments_meeting_sample < len(instruments):
+        blockers.append("INSTRUMENT_SAMPLE_INCOMPLETE")
     if any(item.health_status != "GREEN" for item in strategies):
         blockers.append("STRATEGY_HEALTH_NOT_GREEN")
     if summary_row[0] != summary_row[1] or summary_row[0] != summary_row[2]:
@@ -254,9 +308,12 @@ async def paper_executions(
             required_trades_per_strategy=settings.paper_observation_min_trades,
             strategies_meeting_sample=strategies_meeting_sample,
             total_strategies=len(strategies),
+            instruments_meeting_sample=instruments_meeting_sample,
+            total_instruments=len(instruments),
             blockers=blockers,
         ),
         strategies=strategies,
+        instruments=instruments,
         executions=[
             PaperExecutionMonitorItem(
                 pipeline_run_id=run.id,
@@ -267,6 +324,9 @@ async def paper_executions(
                 environment=intake.environment.value if intake.environment else None,
                 direction=intake.direction.value if intake.direction else None,
                 instrument_mapping_id=intake.venue_instrument_id,
+                venue_code=venue_code,
+                venue_symbol=venue_symbol,
+                instrument_code=instrument_code,
                 entry_price=intake.entry_price,
                 stop_price=intake.stop_price,
                 targets=intake.targets or [],
@@ -280,6 +340,6 @@ async def paper_executions(
                 reconciled=run.reconciled,
                 realized_pnl=run.realized_pnl,
             )
-            for run, intake, risk in rows
+            for run, intake, risk, venue_code, venue_symbol, instrument_code in rows
         ],
     )
