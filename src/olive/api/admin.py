@@ -17,11 +17,12 @@ from olive.governance.auth import AdminViewerDependency
 from olive.governance.models import KillSwitchRecord
 from olive.governance.schemas import (
     AdminSnapshot,
+    AlertChannelSummary,
+    InstrumentPaperSummary,
     PaperExecutionMonitor,
     PaperExecutionMonitorItem,
     PaperExecutionSummary,
     PaperObservationGate,
-    InstrumentPaperSummary,
     StrategyPaperSummary,
 )
 from olive.paper.models import PaperOrderRecord, PaperPipelineRunRecord, PaperPositionRecord
@@ -127,7 +128,7 @@ def _instrument_summaries(
         )
 
     summaries: list[InstrumentPaperSummary] = []
-    for (code, version, venue, symbol, instrument), trades in sorted(grouped.items()):
+    for (_code, _version, venue, symbol, instrument), trades in sorted(grouped.items()):
         strategy_summary = _strategy_summaries(trades, thresholds)[0]
         summaries.append(
             InstrumentPaperSummary(
@@ -138,6 +139,58 @@ def _instrument_summaries(
             )
         )
     return summaries
+
+
+def _alert_channels(
+    mappings: list[Any], intakes: list[SignalIntakeRecord]
+) -> list[AlertChannelSummary]:
+    summaries: list[AlertChannelSummary] = []
+    for mapping_id, venue, symbol, instrument in mappings:
+        matching: list[SignalIntakeRecord] = []
+        for intake in intakes:
+            raw = intake.raw_payload or {}
+            raw_venue = str(raw.get("venue", "")).upper()
+            raw_symbol = str(raw.get("instrument", "")).upper()
+            if intake.venue_instrument_id == mapping_id or (
+                raw_venue == venue and raw_symbol == symbol
+            ):
+                matching.append(intake)
+        matching.sort(key=lambda item: item.created_at, reverse=True)
+        latest = matching[0] if matching else None
+        latency_ms: int | None = None
+        if latest is not None and latest.emitted_at is not None:
+            received_at = latest.created_at
+            emitted_at = latest.emitted_at
+            if received_at.tzinfo is None:
+                received_at = received_at.replace(tzinfo=UTC)
+            if emitted_at.tzinfo is None:
+                emitted_at = emitted_at.replace(tzinfo=UTC)
+            latency_ms = max(
+                0, int((received_at - emitted_at).total_seconds() * 1000)
+            )
+        summaries.append(
+            AlertChannelSummary(
+                venue_code=venue,
+                venue_symbol=symbol,
+                instrument_code=instrument,
+                state=(
+                    "WAITING"
+                    if latest is None
+                    else "PROBLEM"
+                    if latest.status.value == "REJECTED"
+                    else "RECEIVING"
+                ),
+                last_received_at=latest.created_at if latest else None,
+                last_emitted_at=latest.emitted_at if latest else None,
+                last_status=latest.status.value if latest else None,
+                last_rejection_code=latest.rejection_code if latest else None,
+                last_rejection_reason=latest.rejection_reason if latest else None,
+                delivery_latency_ms=latency_ms,
+                accepted_count=sum(item.status.value != "REJECTED" for item in matching),
+                rejected_count=sum(item.status.value == "REJECTED" for item in matching),
+            )
+        )
+    return sorted(summaries, key=lambda item: (item.venue_code, item.venue_symbol))
 
 
 @router.get("/command-center", response_model=AdminSnapshot)
@@ -259,6 +312,27 @@ async def paper_executions(
     thresholds = PerformanceThresholds(min_trades=settings.paper_observation_min_trades)
     strategies = _strategy_summaries(list(performance_rows), thresholds)
     instruments = _instrument_summaries(list(performance_rows), thresholds)
+    mapping_rows = (
+        await session.execute(
+            select(
+                VenueInstrument.id,
+                Venue.code,
+                VenueInstrument.symbol,
+                Instrument.code,
+            )
+            .join(Venue, Venue.id == VenueInstrument.venue_id)
+            .join(Instrument, Instrument.id == VenueInstrument.instrument_id)
+            .order_by(Venue.code, VenueInstrument.symbol)
+        )
+    ).all()
+    intake_rows = (
+        await session.scalars(
+            select(SignalIntakeRecord)
+            .order_by(SignalIntakeRecord.created_at.desc())
+            .limit(5000)
+        )
+    ).all()
+    alert_channels = _alert_channels(list(mapping_rows), list(intake_rows))
     observation_started_at = summary_row[5]
     observation_latest_at = summary_row[6]
     observed_days = 0
@@ -314,6 +388,7 @@ async def paper_executions(
         ),
         strategies=strategies,
         instruments=instruments,
+        alert_channels=alert_channels,
         executions=[
             PaperExecutionMonitorItem(
                 pipeline_run_id=run.id,

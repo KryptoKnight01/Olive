@@ -209,6 +209,22 @@ async def test_admin_lists_paper_execution_with_summary(admin_client: AsyncClien
             "instrument_code": "BTC-USDT-PERP",
         }
     ]
+    assert body["alert_channels"] == [
+        {
+            "venue_code": "BINANCE",
+            "venue_symbol": "BTCUSDT",
+            "instrument_code": "BTC-USDT-PERP",
+            "state": "RECEIVING",
+            "last_received_at": body["alert_channels"][0]["last_received_at"],
+            "last_emitted_at": None,
+            "last_status": "RISK_REVIEW",
+            "last_rejection_code": None,
+            "last_rejection_reason": None,
+            "delivery_latency_ms": None,
+            "accepted_count": 1,
+            "rejected_count": 0,
+        }
+    ]
 
 
 async def test_admin_execution_limit_is_bounded(admin_client: AsyncClient) -> None:

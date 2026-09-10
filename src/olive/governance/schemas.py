@@ -186,6 +186,23 @@ class InstrumentPaperSummary(StrategyPaperSummary):
     instrument_code: str
 
 
+class AlertChannelSummary(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    venue_code: str
+    venue_symbol: str
+    instrument_code: str
+    state: str
+    last_received_at: datetime | None
+    last_emitted_at: datetime | None
+    last_status: str | None
+    last_rejection_code: str | None
+    last_rejection_reason: str | None
+    delivery_latency_ms: int | None
+    accepted_count: int
+    rejected_count: int
+
+
 class PaperObservationGate(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -211,4 +228,5 @@ class PaperExecutionMonitor(BaseModel):
     observation_gate: PaperObservationGate
     strategies: list[StrategyPaperSummary]
     instruments: list[InstrumentPaperSummary]
+    alert_channels: list[AlertChannelSummary]
     executions: list[PaperExecutionMonitorItem]
