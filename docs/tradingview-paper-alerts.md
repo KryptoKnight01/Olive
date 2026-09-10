@@ -28,6 +28,15 @@ the matching symbol. Canonical Olive instrument codes end in `-USDT-PERP`; alert
 venue symbols because intake resolves venue and symbol together. Registration does not configure
 venue credentials or enable live routing.
 
+Additional Binance USDT perpetuals can be registered without dashboard code changes:
+
+```powershell
+./scripts/register-binance-paper.ps1 -Symbols ADAUSDT,DOGEUSDT
+```
+
+Once a registered symbol receives a paper execution, its individual analysis card appears
+automatically while the dashboard's top row continues to show totals across all symbols.
+
 ```json
 {
   "webhook_secret": "replace-with-the-private-staging-secret",

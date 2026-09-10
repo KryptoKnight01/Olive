@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import argparse
 import asyncio
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -41,6 +43,26 @@ BINANCE_PERPETUALS = (
 )
 
 
+def resolve_symbols(symbols: list[str] | None) -> tuple[BinancePerpetual, ...]:
+    if not symbols:
+        return BINANCE_PERPETUALS
+    catalog = {item.venue_symbol: item for item in BINANCE_PERPETUALS}
+    resolved: list[BinancePerpetual] = []
+    for raw_symbol in symbols:
+        symbol = raw_symbol.strip().upper()
+        if not re.fullmatch(r"[A-Z0-9]{2,16}USDT", symbol):
+            raise ValueError(f"unsupported Binance USDT perpetual symbol: {raw_symbol}")
+        definition = catalog.get(symbol)
+        if definition is None:
+            asset_code = symbol.removesuffix("USDT")
+            definition = BinancePerpetual(
+                asset_code, asset_code, symbol, "0.00000001", "0.00000001"
+            )
+        if definition not in resolved:
+            resolved.append(definition)
+    return tuple(resolved)
+
+
 async def ensure_asset(session: AsyncSession, code: str, name: str) -> Asset:
     asset = await session.scalar(select(Asset).where(Asset.code == code))
     if asset is None:
@@ -69,7 +91,8 @@ async def ensure_underlying(
     return underlying
 
 
-async def register() -> None:
+async def register(symbols: list[str] | None = None) -> None:
+    definitions = resolve_symbols(symbols)
     settings = get_settings()
     engine = create_database_engine(settings.database_url)
     sessions = create_session_factory(engine)
@@ -92,7 +115,7 @@ async def register() -> None:
                 session.add(venue)
                 await session.flush()
 
-            for definition in BINANCE_PERPETUALS:
+            for definition in definitions:
                 asset = await ensure_asset(
                     session, definition.asset_code, definition.asset_name
                 )
@@ -140,10 +163,13 @@ async def register() -> None:
     finally:
         await engine.dispose()
 
-    symbols = ", ".join(item.venue_symbol for item in BINANCE_PERPETUALS)
-    print(f"PASS Binance perpetuals registered for paper analysis: {symbols}")
+    registered = ", ".join(item.venue_symbol for item in definitions)
+    print(f"PASS Binance perpetuals registered for paper analysis: {registered}")
     print("Live trading remains disarmed")
 
 
 if __name__ == "__main__":
-    asyncio.run(register())
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--symbols", nargs="*")
+    args = parser.parse_args()
+    asyncio.run(register(args.symbols))

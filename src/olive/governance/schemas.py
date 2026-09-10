@@ -132,6 +132,9 @@ class PaperExecutionMonitorItem(BaseModel):
     environment: str | None
     direction: str | None
     instrument_mapping_id: uuid.UUID | None
+    venue_code: str | None
+    venue_symbol: str | None
+    instrument_code: str | None
     entry_price: Decimal | None
     stop_price: Decimal | None
     targets: list[str]
@@ -177,6 +180,12 @@ class StrategyPaperSummary(BaseModel):
     health_breaches: list[str]
 
 
+class InstrumentPaperSummary(StrategyPaperSummary):
+    venue_code: str
+    venue_symbol: str
+    instrument_code: str
+
+
 class PaperObservationGate(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -189,6 +198,8 @@ class PaperObservationGate(BaseModel):
     required_trades_per_strategy: int
     strategies_meeting_sample: int
     total_strategies: int
+    instruments_meeting_sample: int = 0
+    total_instruments: int = 0
     blockers: list[str]
     live_routing_armed: bool = False
 
@@ -199,4 +210,5 @@ class PaperExecutionMonitor(BaseModel):
     summary: PaperExecutionSummary
     observation_gate: PaperObservationGate
     strategies: list[StrategyPaperSummary]
+    instruments: list[InstrumentPaperSummary]
     executions: list[PaperExecutionMonitorItem]
