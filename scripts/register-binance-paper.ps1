@@ -20,5 +20,6 @@ if ($LASTEXITCODE -ne 0) {
     throw "Binance paper instrument registration failed."
 }
 
-Write-Host "Use Venue BINANCE and Instrument BTCUSDT in the TradingView strategy settings." -ForegroundColor Cyan
+Write-Host "Registered Binance paper symbols: BTCUSDT, BNBUSDT, SOLUSDT, XRPUSDT." -ForegroundColor Cyan
+Write-Host "Use Venue BINANCE and the matching symbol in each TradingView strategy alert." -ForegroundColor Cyan
 Write-Host "Live trading remains disarmed." -ForegroundColor Yellow
